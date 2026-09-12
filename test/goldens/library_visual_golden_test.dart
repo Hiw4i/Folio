@@ -43,6 +43,24 @@ void main() {
     await tester.tap(find.text('All'));
     await tester.pumpAndSettle();
 
+    final filter = find.byKey(const ValueKey<String>('format_filters'));
+    final filterRect = tester.getRect(filter);
+    final segmentWidth = filterRect.width / 5;
+    final lensGesture = await tester.startGesture(
+      Offset(filterRect.left + segmentWidth / 2, filterRect.center.dy),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+    await lensGesture.moveTo(
+      Offset(filterRect.left + segmentWidth * 2.5, filterRect.center.dy),
+    );
+    await tester.pump(const Duration(milliseconds: 110));
+    await expectLater(
+      surface,
+      matchesGoldenFile('library_filter_dragging.png'),
+    );
+    await lensGesture.cancel();
+    await tester.pumpAndSettle();
+
     final search = find.byKey(const ValueKey<String>('search_button_hit'));
     final gesture = await tester.startGesture(tester.getCenter(search));
     await tester.pump(const Duration(milliseconds: 80));

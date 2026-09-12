@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'glass_tokens.dart';
+import 'liquid_shape.dart';
 
 @immutable
 class GlassGeometryFrame {
@@ -288,10 +289,9 @@ abstract final class GlassGeometry {
       _lerp(resolvedCollapsedCenter.dx, finalMainCenterX, visibleMorph),
       resolvedCenterY,
     );
-    final mainRect = Rect.fromCenter(
-      center: mainCenter,
-      width: mainWidth,
-      height: mainHeight,
+    final mainRect = LiquidShape.expandedRect(
+      Rect.fromCenter(center: mainCenter, width: mainWidth, height: mainHeight),
+      press: deformCancel ? 0 : press,
     );
 
     final cancelVisible = visibleMorph > 0.22 || safeSeparation > 0.001;
@@ -308,10 +308,13 @@ abstract final class GlassGeometry {
       _lerp(budCenterX, finalCancelCenterX, emergeT),
       resolvedCenterY,
     );
-    final cancelRect = Rect.fromCenter(
-      center: cancelCenter,
-      width: cancelWidth,
-      height: cancelHeight,
+    final cancelRect = LiquidShape.expandedRect(
+      Rect.fromCenter(
+        center: cancelCenter,
+        width: cancelWidth,
+        height: cancelHeight,
+      ),
+      press: deformCancel ? press : 0,
     );
 
     final bridgeT = ((1 - visibleSeparation) - 0.15) / 0.85;

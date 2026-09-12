@@ -1,17 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
-class GlassButtonController extends ChangeNotifier {
-  GlassButtonController({TickerProvider? vsync}) {
-    final ticker = vsync?.createTicker(_onTick);
-    _ticker = ticker;
-    ticker?.start();
-  }
+import 'liquid_motion_controller.dart';
 
-  static const double _fixedStep = 1 / 120;
-  static const int _maxSubsteps = 4;
+class GlassButtonController extends LiquidMotionController {
+  GlassButtonController({super.vsync});
+
   static const SpringDescription _pressSpring = SpringDescription(
     mass: 1,
     stiffness: 780,
@@ -23,9 +18,6 @@ class GlassButtonController extends ChangeNotifier {
     damping: 22,
   );
 
-  Ticker? _ticker;
-  Duration? _lastTick;
-  double _accumulator = 0;
   bool _pointerDown = false;
   double _maxDrag = 14;
   double _dragGain = 0.34;
@@ -53,8 +45,8 @@ class GlassButtonController extends ChangeNotifier {
     }
     _maxDrag = maxDrag;
     _dragGain = dragGain;
-    displacement = _limit(displacement, _maxDrag);
-    _wake();
+    displacement = LiquidSpring.limitOffset(displacement, _maxDrag);
+    wake();
     notifyListeners();
   }
 
@@ -69,7 +61,7 @@ class GlassButtonController extends ChangeNotifier {
     _lightTarget = position;
     pressOrigin = position;
     pointerVelocity = Offset.zero;
-    _wake();
+    wake();
     notifyListeners();
   }
 
@@ -87,8 +79,11 @@ class GlassButtonController extends ChangeNotifier {
     pointerVelocity = Offset.lerp(pointerVelocity, rawVelocity, 0.38)!;
     _lastPointer = position;
     _lastPointerTime = timestamp;
-    _dragTarget = _limit((position - _pointerStart) * _dragGain, _maxDrag);
-    _wake();
+    _dragTarget = LiquidSpring.limitOffset(
+      (position - _pointerStart) * _dragGain,
+      _maxDrag,
+    );
+    wake();
     notifyListeners();
   }
 
@@ -99,7 +94,7 @@ class GlassButtonController extends ChangeNotifier {
     _pointerDown = false;
     _dragTarget = Offset.zero;
     displacementVelocity += pointerVelocity * 0.11;
-    _wake();
+    wake();
     notifyListeners();
   }
 
@@ -109,7 +104,7 @@ class GlassButtonController extends ChangeNotifier {
     }
     _pointerDown = false;
     _dragTarget = Offset.zero;
-    _wake();
+    wake();
     notifyListeners();
   }
 
@@ -118,14 +113,11 @@ class GlassButtonController extends ChangeNotifier {
       return;
     }
     _lightTarget = position;
-    _wake();
+    wake();
   }
 
-  void _wake() {
-    _ticker?.muted = false;
-  }
-
-  bool _isAtRest() {
+  @override
+  bool get isAtRest {
     if (_pointerDown) {
       return false;
     }
@@ -141,110 +133,32 @@ class GlassButtonController extends ChangeNotifier {
     return true;
   }
 
-  @visibleForTesting
-  void stepForTest(double seconds) {
-    var remaining = seconds.clamp(0.0, 1.0);
-    while (remaining > 0) {
-      final step = math.min(_fixedStep, remaining);
-      _step(step);
-      remaining -= step;
-    }
-    notifyListeners();
-  }
-
-  void _onTick(Duration elapsed) {
-    final previous = _lastTick;
-    _lastTick = elapsed;
-    if (previous == null) {
-      return;
-    }
-    final frameDelta = math.min(
-      (elapsed - previous).inMicroseconds / Duration.microsecondsPerSecond,
-      1 / 30,
-    );
-    _accumulator += frameDelta;
-    var steps = 0;
-    while (_accumulator >= _fixedStep && steps < _maxSubsteps) {
-      _step(_fixedStep);
-      _accumulator -= _fixedStep;
-      steps++;
-    }
-    if (steps == _maxSubsteps) {
-      _accumulator = math.min(_accumulator, _fixedStep);
-    }
-    notifyListeners();
-    if (_isAtRest()) {
-      _ticker?.muted = true;
-    }
-  }
-
-  void _step(double dt) {
-    final nextPress = _springScalar(
-      press,
-      pressVelocity,
-      _pointerDown ? 1 : 0,
-      _pressSpring,
-      dt,
+  @override
+  void integrate(double dt) {
+    final nextPress = LiquidSpring.scalar(
+      position: press,
+      velocity: pressVelocity,
+      target: _pointerDown ? 1 : 0,
+      spring: _pressSpring,
+      dt: dt,
     );
     press = nextPress.$1;
     pressVelocity = nextPress.$2;
-    final nextDisplacement = _springOffset(
-      displacement,
-      displacementVelocity,
-      _dragTarget,
-      _returnSpring,
-      dt,
+    final nextDisplacement = LiquidSpring.offset(
+      position: displacement,
+      velocity: displacementVelocity,
+      target: _dragTarget,
+      spring: _returnSpring,
+      dt: dt,
     );
     displacement = nextDisplacement.$1;
     displacementVelocity = nextDisplacement.$2;
-    displacement = _limit(displacement, _maxDrag);
+    displacement = LiquidSpring.limitOffset(displacement, _maxDrag);
     lightPosition = Offset.lerp(
       lightPosition,
       _lightTarget,
       1 - math.exp(-dt * 22),
     )!;
     press = press.clamp(0.0, 1.08);
-  }
-
-  static (double, double) _springScalar(
-    double position,
-    double velocity,
-    double target,
-    SpringDescription spring,
-    double dt,
-  ) {
-    final acceleration =
-        (spring.stiffness * (target - position) - spring.damping * velocity) /
-        spring.mass;
-    final nextVelocity = velocity + acceleration * dt;
-    return (position + nextVelocity * dt, nextVelocity);
-  }
-
-  static (Offset, Offset) _springOffset(
-    Offset position,
-    Offset velocity,
-    Offset target,
-    SpringDescription spring,
-    double dt,
-  ) {
-    final acceleration =
-        (target - position) * (spring.stiffness / spring.mass) -
-        velocity * (spring.damping / spring.mass);
-    final nextVelocity = velocity + acceleration * dt;
-    return (position + nextVelocity * dt, nextVelocity);
-  }
-
-  static Offset _limit(Offset value, double maximum) {
-    if (value.distance <= maximum || value == Offset.zero) {
-      return value;
-    }
-    return value / value.distance * maximum;
-  }
-
-  @override
-  void dispose() {
-    _ticker?.dispose();
-    _ticker = null;
-    super.dispose();
   }
 }

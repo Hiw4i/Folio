@@ -62,7 +62,7 @@ class MotionTokens {
 @immutable
 class GlassTokens {
   const GlassTokens({
-    this.collapsedDiameter = 68,
+    this.collapsedDiameter = 62,
     this.expandedHeight = 64,
     this.cancelWidth = 92,
     this.cancelHeight = 54,

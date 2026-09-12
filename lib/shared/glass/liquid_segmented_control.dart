@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import '../theme/folio_theme.dart';
 import 'glass_geometry.dart';
 import 'glass_shell.dart';
+import 'liquid_shape.dart';
 import 'liquid_segmented_controller.dart';
 
 @immutable
@@ -36,7 +37,7 @@ class LiquidSegmentedControl<T> extends StatefulWidget {
 
 class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
     with SingleTickerProviderStateMixin {
-  static const double _height = 58;
+  static const double _height = 54;
   static const double _lensInset = 4;
   static final ui.ImageFilter _caseBlur = ui.ImageFilter.blur(
     sigmaX: 11,
@@ -84,7 +85,9 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
 
   void _select(int index) {
     _motion.select(index);
-    widget.onSelected(widget.segments[index].value);
+    if (index != _selectedIndex) {
+      widget.onSelected(widget.segments[index].value);
+    }
   }
 
   @override
@@ -106,13 +109,24 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
               final segmentWidth = size.width / widget.segments.length;
               final centerX = segmentWidth * (_motion.position + 0.5);
               final baseWidth = segmentWidth - _lensInset * 2;
-              final desiredWidth = baseWidth * (1 + _motion.stretch * 0.34);
+              final materialRect = LiquidShape.expandedRect(
+                Rect.fromCenter(
+                  center: Offset(centerX, size.height / 2),
+                  width: baseWidth,
+                  height: 44,
+                ),
+                press: _motion.press * (_motion.isDraggingLens ? 1 : 0.22),
+                travel: _motion.stretch,
+              );
               final availableHalfWidth = math.max(
                 baseWidth / 2,
-                math.min(centerX - 2, size.width - centerX - 2),
+                math.min(centerX, size.width - centerX),
               );
-              final lensWidth = math.min(desiredWidth, availableHalfWidth * 2);
-              final lensHeight = 48 - _motion.stretch * 3.8;
+              final lensWidth = math.min(
+                materialRect.width,
+                availableHalfWidth * 2,
+              );
+              final lensHeight = math.min(materialRect.height, _height - 2);
               final lensRect = Rect.fromCenter(
                 center: Offset(centerX, size.height / 2),
                 width: lensWidth,
@@ -120,7 +134,7 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
               );
               return MouseRegion(
                 cursor: SystemMouseCursors.click,
-                onHover: (event) => _motion.movePointer(event.localPosition),
+                onHover: (event) => _motion.updateHover(event.localPosition),
                 child: Listener(
                   behavior: HitTestBehavior.opaque,
                   onPointerDown: (event) {
@@ -128,23 +142,39 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
                       return;
                     }
                     _pointer = event.pointer;
-                    _motion.beginPointer(event.localPosition);
+                    _motion.beginPointer(
+                      position: event.localPosition,
+                      timestamp: event.timeStamp,
+                      itemExtent: segmentWidth,
+                      dragLens: lensRect
+                          .inflate(8)
+                          .contains(event.localPosition),
+                    );
                   },
                   onPointerMove: (event) {
                     if (_pointer == event.pointer) {
-                      _motion.movePointer(event.localPosition);
+                      _motion.movePointer(
+                        position: event.localPosition,
+                        timestamp: event.timeStamp,
+                        itemExtent: segmentWidth,
+                      );
                     }
                   },
                   onPointerUp: (event) {
                     if (_pointer == event.pointer) {
+                      final index = _motion.endPointer(
+                        position: event.localPosition,
+                        timestamp: event.timeStamp,
+                        itemExtent: segmentWidth,
+                      );
                       _pointer = null;
-                      _motion.endPointer();
+                      _select(index);
                     }
                   },
                   onPointerCancel: (event) {
                     if (_pointer == event.pointer) {
                       _pointer = null;
-                      _motion.endPointer();
+                      _motion.cancelPointer(_selectedIndex);
                     }
                   },
                   child: Stack(
@@ -299,26 +329,22 @@ class _SegmentLabel extends StatelessWidget {
           }
           return KeyEventResult.ignored;
         },
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    color: foreground,
-                    fontSize: 13.5,
-                    fontWeight: selected > 0.58
-                        ? FontWeight.w600
-                        : FontWeight.w500,
-                    letterSpacing: -0.12,
-                  ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  color: foreground,
+                  fontSize: 13.5,
+                  fontWeight: selected > 0.58
+                      ? FontWeight.w600
+                      : FontWeight.w500,
+                  letterSpacing: -0.12,
                 ),
               ),
             ),

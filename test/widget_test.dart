@@ -68,4 +68,26 @@ void main() {
     await tester.pump();
     expect(find.text('File access expired'), findsNothing);
   });
+
+  testWidgets('dragging the selected filter lens changes the format', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+    );
+    await tester.pumpAndSettle();
+    final filter = find.byKey(const ValueKey<String>('format_filters'));
+    final rect = tester.getRect(filter);
+    final itemWidth = rect.width / 5;
+
+    await tester.timedDragFrom(
+      Offset(rect.left + itemWidth / 2, rect.center.dy),
+      Offset(itemWidth * 3, 0),
+      const Duration(milliseconds: 420),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Roadmap.pptx'), findsOneWidget);
+    expect(find.text('Annual report.pdf'), findsNothing);
+  });
 }

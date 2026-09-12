@@ -1,29 +1,19 @@
 import 'dart:math' as math;
 
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import 'glass_tokens.dart';
+import 'liquid_motion_controller.dart';
 
 enum GlassInteractionState { idle, pressed, dragging, opening, open, closing }
 
 enum GlassPointerTarget { none, main, cancel }
 
-class GlassMotionController extends ChangeNotifier {
-  GlassMotionController({TickerProvider? vsync, MotionTokens? tokens})
-    : _tokens = tokens ?? const MotionTokens.standard() {
-    final ticker = vsync?.createTicker(_onTick);
-    _ticker = ticker;
-    ticker?.start();
-  }
+class GlassMotionController extends LiquidMotionController {
+  GlassMotionController({super.vsync, MotionTokens? tokens})
+    : _tokens = tokens ?? const MotionTokens.standard();
 
-  static const double _fixedStep = 1 / 120;
-  static const int _maxSubsteps = 4;
-
-  Ticker? _ticker;
   MotionTokens _tokens;
-  Duration? _lastTick;
-  double _accumulator = 0;
   bool _wantsOpen = false;
   bool _pointerDown = false;
   bool _dragExceeded = false;
@@ -61,10 +51,11 @@ class GlassMotionController extends ChangeNotifier {
   MotionTokens get tokens => _tokens;
 
   void _wake() {
-    _ticker?.muted = false;
+    wake();
   }
 
-  bool _isAtRest() {
+  @override
+  bool get isAtRest {
     if (_pointerDown) {
       return false;
     }
@@ -94,7 +85,7 @@ class GlassMotionController extends ChangeNotifier {
       return;
     }
     _tokens = next;
-    displacement = _limit(displacement, _tokens.maxDrag);
+    displacement = LiquidSpring.limitOffset(displacement, _tokens.maxDrag);
     _wake();
     notifyListeners();
   }
@@ -147,9 +138,12 @@ class GlassMotionController extends ChangeNotifier {
       }
     }
     if (_dragExceeded && _activeTarget == GlassPointerTarget.main) {
-      _dragTarget = _limit(travel * _tokens.dragGain, _tokens.maxDrag);
+      _dragTarget = LiquidSpring.limitOffset(
+        travel * _tokens.dragGain,
+        _tokens.maxDrag,
+      );
     } else if (_dragExceeded && _activeTarget == GlassPointerTarget.cancel) {
-      _dragTarget = _limit(travel * 0.32, 12);
+      _dragTarget = LiquidSpring.limitOffset(travel * 0.32, 12);
     }
     _wake();
     notifyListeners();
@@ -231,44 +225,8 @@ class GlassMotionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  @visibleForTesting
-  void stepForTest(double seconds) {
-    var remaining = seconds.clamp(0.0, 1.0);
-    while (remaining > 0) {
-      final step = math.min(_fixedStep, remaining);
-      _step(step);
-      remaining -= step;
-    }
-    notifyListeners();
-  }
-
-  void _onTick(Duration elapsed) {
-    final previous = _lastTick;
-    _lastTick = elapsed;
-    if (previous == null) {
-      return;
-    }
-    final frameDelta = math.min(
-      (elapsed - previous).inMicroseconds / Duration.microsecondsPerSecond,
-      1 / 30,
-    );
-    _accumulator += frameDelta;
-    var steps = 0;
-    while (_accumulator >= _fixedStep && steps < _maxSubsteps) {
-      _step(_fixedStep);
-      _accumulator -= _fixedStep;
-      steps++;
-    }
-    if (steps == _maxSubsteps) {
-      _accumulator = math.min(_accumulator, _fixedStep);
-    }
-    notifyListeners();
-    if (_isAtRest()) {
-      _ticker?.muted = true;
-    }
-  }
-
-  void _step(double dt) {
+  @override
+  void integrate(double dt) {
     final previousMorph = morph;
     final previousSeparation = separation;
     final morphTarget = _wantsOpen
@@ -278,21 +236,21 @@ class GlassMotionController extends ChangeNotifier {
         : 1.0;
     final separationTarget = _wantsOpen && morph > 0.28 ? 1.0 : 0.0;
 
-    final nextMorph = _springScalar(
-      morph,
-      morphVelocity,
-      morphTarget,
-      _tokens.morph,
-      dt,
+    final nextMorph = LiquidSpring.scalar(
+      position: morph,
+      velocity: morphVelocity,
+      target: morphTarget,
+      spring: _tokens.morph,
+      dt: dt,
     );
     morph = nextMorph.$1;
     morphVelocity = nextMorph.$2;
-    final nextSeparation = _springScalar(
-      separation,
-      separationVelocity,
-      separationTarget,
-      _tokens.separation,
-      dt,
+    final nextSeparation = LiquidSpring.scalar(
+      position: separation,
+      velocity: separationVelocity,
+      target: separationTarget,
+      spring: _tokens.separation,
+      dt: dt,
     );
     separation = nextSeparation.$1;
     separationVelocity = nextSeparation.$2;
@@ -304,21 +262,21 @@ class GlassMotionController extends ChangeNotifier {
       settleWobbleVelocity += _tokens.maxDrag > 10 ? 132 : 20;
       _openingImpulseArmed = false;
     }
-    final nextPress = _springScalar(
-      press,
-      pressVelocity,
-      _pointerDown ? 1 : 0,
-      _tokens.press,
-      dt,
+    final nextPress = LiquidSpring.scalar(
+      position: press,
+      velocity: pressVelocity,
+      target: _pointerDown ? 1 : 0,
+      spring: _tokens.press,
+      dt: dt,
     );
     press = nextPress.$1;
     pressVelocity = nextPress.$2;
-    final nextSubmit = _springScalar(
-      submitEnergy,
-      submitVelocity,
-      0,
-      const SpringDescription(mass: 1, stiffness: 250, damping: 19),
-      dt,
+    final nextSubmit = LiquidSpring.scalar(
+      position: submitEnergy,
+      velocity: submitVelocity,
+      target: 0,
+      spring: const SpringDescription(mass: 1, stiffness: 250, damping: 19),
+      dt: dt,
     );
     submitEnergy = nextSubmit.$1;
     submitVelocity = nextSubmit.$2;
@@ -330,25 +288,25 @@ class GlassMotionController extends ChangeNotifier {
       settleWobbleVelocity += _tokens.maxDrag > 10 ? 136 : 22;
       _collapseImpulseArmed = false;
     }
-    final nextSettleWobble = _springScalar(
-      settleWobble,
-      settleWobbleVelocity,
-      0,
-      const SpringDescription(mass: 1, stiffness: 250, damping: 9.6),
-      dt,
+    final nextSettleWobble = LiquidSpring.scalar(
+      position: settleWobble,
+      velocity: settleWobbleVelocity,
+      target: 0,
+      spring: const SpringDescription(mass: 1, stiffness: 250, damping: 9.6),
+      dt: dt,
     );
     settleWobble = nextSettleWobble.$1.clamp(-10.5, 10.5);
     settleWobbleVelocity = nextSettleWobble.$2;
-    final nextDisplacement = _springOffset(
-      displacement,
-      displacementVelocity,
-      _dragTarget,
-      _tokens.pointerReturn,
-      dt,
+    final nextDisplacement = LiquidSpring.offset(
+      position: displacement,
+      velocity: displacementVelocity,
+      target: _dragTarget,
+      spring: _tokens.pointerReturn,
+      dt: dt,
     );
     displacement = nextDisplacement.$1;
     displacementVelocity = nextDisplacement.$2;
-    displacement = _limit(displacement, _tokens.maxDrag);
+    displacement = LiquidSpring.limitOffset(displacement, _tokens.maxDrag);
     lightPosition = Offset.lerp(
       lightPosition,
       _lightTarget,
@@ -387,48 +345,6 @@ class GlassMotionController extends ChangeNotifier {
     }
   }
 
-  static (double, double) _springScalar(
-    double position,
-    double velocity,
-    double target,
-    SpringDescription spring,
-    double dt,
-  ) {
-    final acceleration =
-        (spring.stiffness * (target - position) - spring.damping * velocity) /
-        spring.mass;
-    final nextVelocity = velocity + acceleration * dt;
-    return (position + nextVelocity * dt, nextVelocity);
-  }
-
-  static (Offset, Offset) _springOffset(
-    Offset position,
-    Offset velocity,
-    Offset target,
-    SpringDescription spring,
-    double dt,
-  ) {
-    final acceleration =
-        (target - position) * (spring.stiffness / spring.mass) -
-        velocity * (spring.damping / spring.mass);
-    final nextVelocity = velocity + acceleration * dt;
-    return (position + nextVelocity * dt, nextVelocity);
-  }
-
-  static Offset _limit(Offset value, double maximum) {
-    if (value.distance <= maximum || value == Offset.zero) {
-      return value;
-    }
-    return value / value.distance * maximum;
-  }
-
   static bool _isClose(double value, double target) =>
       (value - target).abs() < 0.002;
-
-  @override
-  void dispose() {
-    _ticker?.dispose();
-    _ticker = null;
-    super.dispose();
-  }
 }

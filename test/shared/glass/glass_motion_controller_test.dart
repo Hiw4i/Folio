@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
+import 'package:folio/shared/glass/glass_geometry.dart';
 import 'package:folio/shared/glass/glass_motion_controller.dart';
 
 void main() {
@@ -43,5 +45,34 @@ void main() {
     );
     motion.stepForTest(1);
     expect(motion.displacement.distance, lessThan(0.1));
+  });
+
+  test('press expands the search material instead of shrinking it', () {
+    final motion = GlassMotionController();
+    addTearDown(motion.dispose);
+    final resting = GlassGeometry.resolve(
+      viewport: const Size(400, 200),
+      morph: motion.morph,
+      separation: motion.separation,
+      displacement: motion.displacement,
+    );
+
+    motion.beginPointer(
+      position: resting.mainRect.center,
+      timestamp: Duration.zero,
+      target: GlassPointerTarget.main,
+    );
+    motion.stepForTest(0.12);
+    final pressed = GlassGeometry.resolve(
+      viewport: const Size(400, 200),
+      morph: motion.morph,
+      separation: motion.separation,
+      displacement: motion.displacement,
+      pointerPosition: resting.mainRect.center,
+      press: motion.press,
+    );
+
+    expect(pressed.mainRect.width, greaterThan(resting.mainRect.width));
+    expect(pressed.mainRect.height, greaterThan(resting.mainRect.height));
   });
 }

@@ -1,41 +1,42 @@
 import 'dart:math' as math;
 
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import 'glass_tokens.dart';
+import 'liquid_motion_controller.dart';
 
-class LiquidSegmentedController extends ChangeNotifier {
+class LiquidSegmentedController extends LiquidMotionController {
   LiquidSegmentedController({
     required int initialIndex,
     required int itemCount,
-    TickerProvider? vsync,
+    super.vsync,
   }) : assert(itemCount > 0),
        assert(initialIndex >= 0 && initialIndex < itemCount),
        _itemCount = itemCount,
        position = initialIndex.toDouble(),
-       _target = initialIndex.toDouble() {
-    final ticker = vsync?.createTicker(_onTick);
-    _ticker = ticker;
-    ticker?.start();
-  }
+       _target = initialIndex.toDouble();
 
-  static const double _fixedStep = 1 / 120;
-  static const int _maxSubsteps = 4;
   static const SpringDescription _stretchSpring = SpringDescription(
     mass: 0.86,
     stiffness: 250,
     damping: 18,
   );
+  static const SpringDescription _dragSpring = SpringDescription(
+    mass: 0.74,
+    stiffness: 520,
+    damping: 28,
+  );
 
   final int _itemCount;
-  Ticker? _ticker;
   MotionTokens _tokens = const MotionTokens.standard();
-  Duration? _lastTick;
-  double _accumulator = 0;
   double _target;
   bool _pointerDown = false;
+  bool _draggingLens = false;
   double _maximumStretch = 1;
+  double _dragGrabOffset = 0;
+  double _pointerSpeed = 0;
+  double _lastPointerX = 0;
+  Duration _lastPointerTime = Duration.zero;
   Offset _lightTarget = Offset.zero;
 
   double position;
@@ -46,8 +47,9 @@ class LiquidSegmentedController extends ChangeNotifier {
   double pressVelocity = 0;
   Offset lightPosition = Offset.zero;
 
-  int get targetIndex => _target.round();
+  int get targetIndex => _target.round().clamp(0, _itemCount - 1);
   bool get isPointerDown => _pointerDown;
+  bool get isDraggingLens => _draggingLens;
 
   void setReducedMotion(bool reduced) {
     final next = reduced
@@ -60,89 +62,124 @@ class LiquidSegmentedController extends ChangeNotifier {
     _tokens = next;
     _maximumStretch = maximumStretch;
     stretch = math.min(stretch, maximumStretch);
-    _wake();
+    wake();
     notifyListeners();
   }
 
   void select(int index) {
     assert(index >= 0 && index < _itemCount);
-    final nextTarget = index.toDouble();
-    if ((_target - nextTarget).abs() < 0.001 &&
-        (position - nextTarget).abs() < 0.001) {
+    _selectTarget(index.toDouble(), addImpulse: true);
+  }
+
+  void beginPointer({
+    required Offset position,
+    required Duration timestamp,
+    required double itemExtent,
+    required bool dragLens,
+  }) {
+    if (_pointerDown || itemExtent <= 0) {
       return;
     }
-    final travel = (nextTarget - position).abs();
-    _target = nextTarget;
-    if (_maximumStretch > 0.1) {
-      stretchVelocity += math.min(7.5, 1.8 + travel * 1.15);
-    }
-    _wake();
-    notifyListeners();
-  }
-
-  void beginPointer(Offset position) {
     _pointerDown = true;
+    _draggingLens = dragLens;
     _lightTarget = position;
-    _wake();
+    _lastPointerX = position.dx;
+    _lastPointerTime = timestamp;
+    _pointerSpeed = 0;
+    if (dragLens) {
+      final pointerPosition = position.dx / itemExtent - 0.5;
+      _dragGrabOffset = pointerPosition - this.position;
+      _target = this.position.clamp(0.0, _itemCount - 1.0);
+    }
+    wake();
     notifyListeners();
   }
 
-  void movePointer(Offset position) {
+  void movePointer({
+    required Offset position,
+    required Duration timestamp,
+    required double itemExtent,
+  }) {
     _lightTarget = position;
-    _wake();
+    if (!_pointerDown || itemExtent <= 0) {
+      wake();
+      return;
+    }
+    final elapsedMicros = (timestamp - _lastPointerTime).inMicroseconds.clamp(
+      1000,
+      100000,
+    );
+    final seconds = elapsedMicros / Duration.microsecondsPerSecond;
+    final rawSpeed = (position.dx - _lastPointerX) / itemExtent / seconds;
+    _pointerSpeed = _pointerSpeed * 0.56 + rawSpeed * 0.44;
+    _lastPointerX = position.dx;
+    _lastPointerTime = timestamp;
+
+    if (_draggingLens) {
+      final pointerPosition = position.dx / itemExtent - 0.5;
+      _selectTarget(pointerPosition - _dragGrabOffset, addImpulse: false);
+    }
+    wake();
+    notifyListeners();
   }
 
-  void endPointer() {
+  int endPointer({
+    required Offset position,
+    required Duration timestamp,
+    required double itemExtent,
+  }) {
+    if (!_pointerDown) {
+      return targetIndex;
+    }
+    movePointer(
+      position: position,
+      timestamp: timestamp,
+      itemExtent: itemExtent,
+    );
+    final projected = _draggingLens
+        ? _target + _pointerSpeed.clamp(-12.0, 12.0) * 0.025
+        : position.dx / itemExtent - 0.5;
+    final selected = projected.round().clamp(0, _itemCount - 1);
+    _pointerDown = false;
+    _draggingLens = false;
+    _selectTarget(selected.toDouble(), addImpulse: true);
+    wake();
+    notifyListeners();
+    return selected;
+  }
+
+  void cancelPointer(int selectedIndex) {
     if (!_pointerDown) {
       return;
     }
     _pointerDown = false;
-    _wake();
+    _draggingLens = false;
+    _pointerSpeed = 0;
+    _selectTarget(selectedIndex.toDouble(), addImpulse: false);
+    wake();
     notifyListeners();
   }
 
-  @visibleForTesting
-  void stepForTest(double seconds) {
-    var remaining = seconds.clamp(0.0, 1.0);
-    while (remaining > 0) {
-      final step = math.min(_fixedStep, remaining);
-      _step(step);
-      remaining -= step;
-    }
-    notifyListeners();
+  void updateHover(Offset position) {
+    _lightTarget = position;
+    wake();
   }
 
-  void _wake() {
-    _ticker?.muted = false;
-  }
-
-  void _onTick(Duration elapsed) {
-    final previous = _lastTick;
-    _lastTick = elapsed;
-    if (previous == null) {
+  void _selectTarget(double target, {required bool addImpulse}) {
+    final nextTarget = target.clamp(0.0, _itemCount - 1.0);
+    if ((_target - nextTarget).abs() < 0.001) {
       return;
     }
-    final frameDelta = math.min(
-      (elapsed - previous).inMicroseconds / Duration.microsecondsPerSecond,
-      1 / 30,
-    );
-    _accumulator += frameDelta;
-    var steps = 0;
-    while (_accumulator >= _fixedStep && steps < _maxSubsteps) {
-      _step(_fixedStep);
-      _accumulator -= _fixedStep;
-      steps++;
+    final travel = (nextTarget - position).abs();
+    _target = nextTarget;
+    if (addImpulse && _maximumStretch > 0.1) {
+      stretchVelocity += math.min(7.5, 1.8 + travel * 1.15);
     }
-    if (steps == _maxSubsteps) {
-      _accumulator = math.min(_accumulator, _fixedStep);
-    }
-    notifyListeners();
-    if (_isAtRest) {
-      _ticker?.muted = true;
-    }
+    wake();
   }
 
-  bool get _isAtRest =>
+  @override
+  bool get isAtRest =>
       (position - _target).abs() < 0.001 &&
       velocity.abs() < 0.01 &&
       stretch < 0.002 &&
@@ -151,37 +188,44 @@ class LiquidSegmentedController extends ChangeNotifier {
       pressVelocity.abs() < 0.01 &&
       (!_pointerDown && (lightPosition - _lightTarget).distance < 0.05);
 
-  void _step(double dt) {
-    final movement = _springScalar(
-      position,
-      velocity,
-      _target,
-      _tokens.separation,
-      dt,
+  @override
+  void integrate(double dt) {
+    final movement = LiquidSpring.scalar(
+      position: position,
+      velocity: velocity,
+      target: _target,
+      spring: _draggingLens && _maximumStretch > 0.1
+          ? _dragSpring
+          : _tokens.separation,
+      dt: dt,
     );
     position = movement.$1.clamp(-0.08, _itemCount - 0.92);
     velocity = movement.$2;
 
     final distance = (_target - position).abs();
+    final pointerStretch = (_pointerSpeed.abs() * 0.045).clamp(0.0, 1.0);
     final dynamicStretch =
-        (distance * 0.34 + velocity.abs() * 0.055).clamp(0.0, 1.0) *
+        math.max(
+          (distance * 0.34 + velocity.abs() * 0.055).clamp(0.0, 1.0),
+          _draggingLens ? pointerStretch : 0,
+        ) *
         _maximumStretch;
-    final stretching = _springScalar(
-      stretch,
-      stretchVelocity,
-      dynamicStretch,
-      _stretchSpring,
-      dt,
+    final stretching = LiquidSpring.scalar(
+      position: stretch,
+      velocity: stretchVelocity,
+      target: dynamicStretch,
+      spring: _stretchSpring,
+      dt: dt,
     );
     stretch = stretching.$1.clamp(0.0, _maximumStretch * 1.08);
     stretchVelocity = stretching.$2;
 
-    final pressing = _springScalar(
-      press,
-      pressVelocity,
-      _pointerDown ? 1 : 0,
-      _tokens.press,
-      dt,
+    final pressing = LiquidSpring.scalar(
+      position: press,
+      velocity: pressVelocity,
+      target: _pointerDown ? 1 : 0,
+      spring: _tokens.press,
+      dt: dt,
     );
     press = pressing.$1.clamp(0.0, 1.08);
     pressVelocity = pressing.$2;
@@ -190,26 +234,6 @@ class LiquidSegmentedController extends ChangeNotifier {
       _lightTarget,
       1 - math.exp(-dt * 22),
     )!;
-  }
-
-  static (double, double) _springScalar(
-    double position,
-    double velocity,
-    double target,
-    SpringDescription spring,
-    double dt,
-  ) {
-    final acceleration =
-        (spring.stiffness * (target - position) - spring.damping * velocity) /
-        spring.mass;
-    final nextVelocity = velocity + acceleration * dt;
-    return (position + nextVelocity * dt, nextVelocity);
-  }
-
-  @override
-  void dispose() {
-    _ticker?.dispose();
-    _ticker = null;
-    super.dispose();
+    _pointerSpeed *= math.exp(-dt * 11);
   }
 }
