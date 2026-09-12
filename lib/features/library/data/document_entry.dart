@@ -41,6 +41,18 @@ sealed class DocumentSource {
   String get value;
 }
 
+DocumentSource documentSourceFromJson(Map<String, Object?> json) {
+  final value = json['value'];
+  if (value is! String) {
+    throw const FormatException('Document source is missing its value.');
+  }
+  return switch (json['type']) {
+    'file' => FileDocumentSource(value),
+    'uri' => UriDocumentSource(value),
+    _ => throw const FormatException('Unsupported document source type.'),
+  };
+}
+
 @immutable
 class FileDocumentSource extends DocumentSource {
   const FileDocumentSource(this.path);
@@ -83,16 +95,83 @@ class DocumentEntry {
   final DateTime? lastOpenedAt;
   final bool isAvailable;
 
-  DocumentEntry copyWith({DateTime? lastOpenedAt}) {
+  static const Object _notProvided = Object();
+
+  DocumentEntry copyWith({
+    DocumentSource? source,
+    String? name,
+    DocumentFormat? format,
+    int? sizeBytes,
+    DateTime? modifiedAt,
+    Object? lastOpenedAt = _notProvided,
+    bool? isAvailable,
+  }) {
     return DocumentEntry(
       id: id,
-      source: source,
-      name: name,
-      format: format,
-      sizeBytes: sizeBytes,
-      modifiedAt: modifiedAt,
-      lastOpenedAt: lastOpenedAt ?? this.lastOpenedAt,
-      isAvailable: isAvailable,
+      source: source ?? this.source,
+      name: name ?? this.name,
+      format: format ?? this.format,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      modifiedAt: modifiedAt ?? this.modifiedAt,
+      lastOpenedAt: identical(lastOpenedAt, _notProvided)
+          ? this.lastOpenedAt
+          : lastOpenedAt as DateTime?,
+      isAvailable: isAvailable ?? this.isAvailable,
     );
   }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'source': <String, Object?>{
+      'type': source is FileDocumentSource ? 'file' : 'uri',
+      'value': source.value,
+    },
+    'name': name,
+    'format': format.name,
+    'sizeBytes': sizeBytes,
+    'modifiedAt': modifiedAt.toUtc().toIso8601String(),
+    'lastOpenedAt': lastOpenedAt?.toUtc().toIso8601String(),
+    'isAvailable': isAvailable,
+  };
+
+  factory DocumentEntry.fromJson(Map<String, Object?> json) {
+    final source = json['source'];
+    final formatName = json['format'];
+    final modifiedAt = json['modifiedAt'];
+    final lastOpenedAt = json['lastOpenedAt'];
+    if (json['id'] is! String ||
+        source is! Map ||
+        json['name'] is! String ||
+        formatName is! String ||
+        json['sizeBytes'] is! num ||
+        modifiedAt is! String) {
+      throw const FormatException('Invalid cached document entry.');
+    }
+    final format = DocumentFormat.values.where((item) {
+      return item.name == formatName;
+    }).firstOrNull;
+    if (format == null) {
+      throw const FormatException('Unsupported cached document format.');
+    }
+    return DocumentEntry(
+      id: json['id']! as String,
+      source: documentSourceFromJson(source.cast<String, Object?>()),
+      name: json['name']! as String,
+      format: format,
+      sizeBytes: (json['sizeBytes']! as num).toInt(),
+      modifiedAt: DateTime.parse(modifiedAt),
+      lastOpenedAt: lastOpenedAt is String
+          ? DateTime.parse(lastOpenedAt)
+          : null,
+      isAvailable: json['isAvailable'] as bool? ?? true,
+    );
+  }
+}
+
+String stableDocumentId(DocumentSource source) {
+  return switch (source) {
+    FileDocumentSource(:final path) =>
+      'file:${path.replaceAll('\\', '/').toLowerCase()}',
+    UriDocumentSource(:final uri) => 'uri:$uri',
+  };
 }

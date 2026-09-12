@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
+import 'package:folio/features/library/data/library_repository.dart';
 import 'package:folio/features/library/logic/library_controller.dart';
 
 void main() {
@@ -50,4 +54,114 @@ void main() {
 
     expect(controller.recentDocuments.first.id, document.id);
   });
+
+  test(
+    'cold and warm external documents become pending open requests',
+    () async {
+      final cold = _entry('Cold.pdf');
+      final warm = _entry('Warm.md');
+      final repository = _StreamingRepository(initial: cold);
+      final streamingController = LibraryController(repository: repository);
+      addTearDown(streamingController.dispose);
+
+      await streamingController.load();
+      expect(streamingController.takePendingDocument()?.id, cold.id);
+
+      repository.emit(warm);
+      await Future<void>.delayed(Duration.zero);
+      expect(streamingController.takePendingDocument()?.id, warm.id);
+      expect(streamingController.totalCount, 2);
+    },
+  );
+
+  test(
+    'unavailable Recent can be removed through its recovery state',
+    () async {
+      final missing = _entry(
+        'Missing.txt',
+      ).copyWith(lastOpenedAt: DateTime.utc(2026, 9, 13), isAvailable: false);
+      final repository = _StreamingRepository(
+        documents: <DocumentEntry>[missing],
+      );
+      final recoveryController = LibraryController(repository: repository);
+      addTearDown(recoveryController.dispose);
+      await recoveryController.load();
+
+      await recoveryController.open(missing);
+      expect(recoveryController.unavailableDocument?.id, missing.id);
+      await recoveryController.removeUnavailableFromRecents();
+
+      expect(recoveryController.unavailableDocument, isNull);
+      expect(recoveryController.totalCount, 0);
+    },
+  );
+}
+
+DocumentEntry _entry(String name) {
+  final source = UriDocumentSource('content://test/$name');
+  return DocumentEntry(
+    id: stableDocumentId(source),
+    source: source,
+    name: name,
+    format: DocumentFormatPresentation.fromFileName(name)!,
+    sizeBytes: 10,
+    modifiedAt: DateTime.utc(2026, 9, 13),
+  );
+}
+
+class _StreamingRepository implements LibraryRepository {
+  _StreamingRepository({
+    List<DocumentEntry> documents = const <DocumentEntry>[],
+    this.initial,
+  }) : _documents = List<DocumentEntry>.of(documents);
+
+  final DocumentEntry? initial;
+  final StreamController<DocumentEntry> _incoming =
+      StreamController<DocumentEntry>.broadcast();
+  List<DocumentEntry> _documents;
+
+  void emit(DocumentEntry document) {
+    _documents = <DocumentEntry>[..._documents, document];
+    _incoming.add(document);
+  }
+
+  @override
+  Future<DocumentEntry?> consumeInitialDocument() async {
+    if (initial != null) {
+      _documents = <DocumentEntry>[..._documents, initial!];
+    }
+    return initial;
+  }
+
+  @override
+  void dispose() {
+    unawaited(_incoming.close());
+  }
+
+  @override
+  Stream<DocumentEntry> get incomingDocuments => _incoming.stream;
+
+  @override
+  Future<LibrarySnapshot> load() async => LibrarySnapshot(
+    documents: List<DocumentEntry>.unmodifiable(_documents),
+    access: LibraryAccess.granted,
+  );
+
+  @override
+  Future<DocumentEntry> markOpened(DocumentEntry document) async => document;
+
+  @override
+  Future<DocumentEntry?> recoverAccess(DocumentEntry document) async =>
+      document.copyWith(isAvailable: true);
+
+  @override
+  Stream<LibrarySnapshot> refresh() => const Stream<LibrarySnapshot>.empty();
+
+  @override
+  Future<void> removeFromRecents(DocumentEntry document) async {
+    _documents = _documents.where((item) => item.id != document.id).toList();
+  }
+
+  @override
+  Future<void> requestFullAccess() async {}
 }

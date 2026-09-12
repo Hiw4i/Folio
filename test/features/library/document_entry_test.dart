@@ -33,4 +33,33 @@ void main() {
       expect(DocumentFormatPresentation.fromFileName('No extension'), isNull);
     });
   });
+
+  test('cache JSON preserves path and content URI identity', () {
+    final openedAt = DateTime.utc(2026, 9, 13, 9, 30);
+    final pathSource = const FileDocumentSource(
+      r'/storage/emulated/0/Documents/Report.PDF',
+    );
+    final original = DocumentEntry(
+      id: stableDocumentId(pathSource),
+      source: pathSource,
+      name: 'Report.PDF',
+      format: DocumentFormat.pdf,
+      sizeBytes: 4096,
+      modifiedAt: DateTime.utc(2026, 9, 12),
+      lastOpenedAt: openedAt,
+      isAvailable: false,
+    );
+
+    final decoded = DocumentEntry.fromJson(original.toJson());
+
+    expect(decoded.id, original.id);
+    expect(decoded.source, isA<FileDocumentSource>());
+    expect(decoded.source.value, pathSource.path);
+    expect(decoded.lastOpenedAt, openedAt);
+    expect(decoded.isAvailable, isFalse);
+    expect(
+      stableDocumentId(const UriDocumentSource('content://files/42')),
+      'uri:content://files/42',
+    );
+  });
 }

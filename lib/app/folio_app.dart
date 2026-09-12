@@ -1,12 +1,16 @@
 import 'package:flutter/widgets.dart';
 
-import '../features/library/data/in_memory_library_repository.dart';
+import '../features/library/data/file_library_repository.dart';
+import '../features/library/data/library_repository.dart';
 import '../features/library/logic/library_controller.dart';
 import '../features/library/widgets/library_screen.dart';
+import '../shared/platform/android_storage_gateway.dart';
 import '../shared/theme/folio_theme.dart';
 
 class FolioApp extends StatefulWidget {
-  const FolioApp({super.key});
+  const FolioApp({this.libraryRepository, super.key});
+
+  final LibraryRepository? libraryRepository;
 
   @override
   State<FolioApp> createState() => _FolioAppState();
@@ -19,7 +23,9 @@ class _FolioAppState extends State<FolioApp> {
   void initState() {
     super.initState();
     _libraryController = LibraryController(
-      repository: InMemoryLibraryRepository.demo(),
+      repository:
+          widget.libraryRepository ??
+          FileLibraryRepository(storageGateway: AndroidStorageGateway()),
     );
   }
 

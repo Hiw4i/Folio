@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
 import 'package:flutter/widgets.dart';
 
@@ -20,12 +22,14 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends State<LibraryScreen> {
+class _LibraryScreenState extends State<LibraryScreen>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.controller.load();
     });
@@ -33,38 +37,62 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.controller.refresh());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    return ColoredBox(
-      key: const ValueKey<String>('folio_surface'),
-      color: FolioColors.background,
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          const LibraryBackground(),
-          AnimatedBuilder(
-            animation: widget.controller,
-            builder: (context, child) => _LibraryContent(
-              controller: widget.controller,
-              scrollController: _scrollController,
-            ),
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, child) => PopScope<void>(
+        canPop: widget.controller.unavailableDocument == null,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && widget.controller.unavailableDocument != null) {
+            widget.controller.dismissUnavailable();
+          }
+        },
+        child: ColoredBox(
+          key: const ValueKey<String>('folio_surface'),
+          color: FolioColors.background,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              const LibraryBackground(),
+              _LibraryContent(
+                controller: widget.controller,
+                scrollController: _scrollController,
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: media.viewInsets.bottom,
+                height:
+                    LiquidSearchControlState.height + media.viewPadding.bottom,
+                child: LiquidSearchControl(
+                  key: const ValueKey<String>('library_search'),
+                  onChanged: widget.controller.updateQuery,
+                ),
+              ),
+              if (widget.controller.unavailableDocument case final document?)
+                _UnavailableRecovery(
+                  document: document,
+                  onDismiss: widget.controller.dismissUnavailable,
+                  onRecover: widget.controller.recoverUnavailable,
+                  onRemove: widget.controller.removeUnavailableFromRecents,
+                ),
+            ],
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: media.viewInsets.bottom,
-            height: LiquidSearchControlState.height + media.viewPadding.bottom,
-            child: LiquidSearchControl(
-              key: const ValueKey<String>('library_search'),
-              onChanged: widget.controller.updateQuery,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -103,7 +131,9 @@ class _LibraryContent extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Text(
-                        '${controller.totalCount} documents',
+                        controller.isRefreshing
+                            ? 'Scanning…'
+                            : '${controller.totalCount} documents',
                         style: FolioText.metadata,
                       ),
                     ),
@@ -120,7 +150,16 @@ class _LibraryContent extends StatelessWidget {
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
           if (controller.access == LibraryAccess.denied &&
               controller.loadState == LibraryLoadState.ready)
-            const SliverToBoxAdapter(child: _PermissionNotice()),
+            SliverToBoxAdapter(
+              child: _PermissionNotice(
+                onOpenSettings: controller.requestFullAccess,
+              ),
+            ),
+          if (controller.refreshFailed &&
+              controller.loadState == LibraryLoadState.ready)
+            SliverToBoxAdapter(
+              child: _RefreshFailureNotice(onRetry: controller.refresh),
+            ),
           if (controller.loadState == LibraryLoadState.loading)
             const SliverFillRemaining(
               hasScrollBody: false,
@@ -243,7 +282,9 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _PermissionNotice extends StatelessWidget {
-  const _PermissionNotice();
+  const _PermissionNotice({required this.onOpenSettings});
+
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +329,7 @@ class _PermissionNotice extends StatelessWidget {
                         label: 'Open settings',
                         width: 142,
                         height: 50,
-                        onTap: _prototypeAction,
+                        onTap: onOpenSettings,
                       ),
                     ),
                   ),
@@ -300,8 +341,133 @@ class _PermissionNotice extends StatelessWidget {
       ),
     );
   }
+}
 
-  static void _prototypeAction() {}
+class _UnavailableRecovery extends StatelessWidget {
+  const _UnavailableRecovery({
+    required this.document,
+    required this.onDismiss,
+    required this.onRecover,
+    required this.onRemove,
+  });
+
+  final DocumentEntry document;
+  final VoidCallback onDismiss;
+  final VoidCallback onRecover;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Semantics(
+        scopesRoute: true,
+        namesRoute: true,
+        explicitChildNodes: true,
+        label: 'File access expired',
+        child: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onDismiss,
+                child: const ColoredBox(color: Color(0xB8000000)),
+              ),
+            ),
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xF21B1B1D),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: const Color(0x2FFFFFFF),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const Text(
+                        'File access expired',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          color: FolioColors.textPrimary,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Folio can no longer reach “${document.name}”. Select it again or remove it from Recents.',
+                        textAlign: TextAlign.center,
+                        style: FolioText.metadata,
+                      ),
+                      const SizedBox(height: 4),
+                      LiquidGlassButton(
+                        label: 'Grant access again',
+                        width: 190,
+                        height: 50,
+                        onTap: onRecover,
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onRemove,
+                        child: const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 9, 16, 15),
+                          child: Text(
+                            'Remove from Recents',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              color: FolioColors.textSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RefreshFailureNotice extends StatelessWidget {
+  const _RefreshFailureNotice({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onRetry,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Semantics(
+              button: true,
+              label: 'Retry library refresh',
+              child: const Text(
+                'Library refresh paused. Tap to try again.',
+                style: FolioText.metadata,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _StatusView extends StatelessWidget {

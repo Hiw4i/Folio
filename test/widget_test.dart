@@ -2,12 +2,16 @@ import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/app/folio_app.dart';
+import 'package:folio/features/library/data/in_memory_library_repository.dart';
+import 'package:folio/features/library/data/document_entry.dart';
 
 void main() {
   testWidgets('catalog filters and liquid search update visible documents', (
     tester,
   ) async {
-    await tester.pumpWidget(const FolioApp());
+    await tester.pumpWidget(
+      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+    );
     await tester.pump();
 
     expect(find.text('Folio'), findsOneWidget);
@@ -31,5 +35,37 @@ void main() {
     expect(find.text('Launch review.pptx'), findsOneWidget);
     expect(find.text('Roadmap.pptx'), findsNothing);
     expect(find.text('RESULTS'), findsOneWidget);
+  });
+
+  testWidgets('unavailable Recent shows recovery and Back dismisses it', (
+    tester,
+  ) async {
+    final source = const UriDocumentSource('content://test/missing');
+    final missing = DocumentEntry(
+      id: stableDocumentId(source),
+      source: source,
+      name: 'Missing.pdf',
+      format: DocumentFormat.pdf,
+      sizeBytes: 42,
+      modifiedAt: DateTime.utc(2026, 9, 13),
+      lastOpenedAt: DateTime.utc(2026, 9, 13),
+      isAvailable: false,
+    );
+    await tester.pumpWidget(
+      FolioApp(
+        libraryRepository: InMemoryLibraryRepository(
+          documents: <DocumentEntry>[missing],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Missing.pdf'));
+    await tester.pump();
+    expect(find.text('File access expired'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('File access expired'), findsNothing);
   });
 }

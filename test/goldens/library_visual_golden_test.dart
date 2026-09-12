@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/app/folio_app.dart';
+import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/shared/glass/liquid_search_control.dart';
 
 void main() {
@@ -15,7 +16,9 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(412, 915));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const FolioApp());
+    await tester.pumpWidget(
+      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+    );
     await tester.pumpAndSettle();
     final surface = find.byKey(const ValueKey<String>('folio_surface'));
 

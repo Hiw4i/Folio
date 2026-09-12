@@ -58,6 +58,20 @@ class InMemoryLibraryRepository implements LibraryRepository {
   }
 
   @override
+  Stream<LibrarySnapshot> refresh() async* {
+    yield await load();
+  }
+
+  @override
+  Future<void> requestFullAccess() async {}
+
+  @override
+  Stream<DocumentEntry> get incomingDocuments => const Stream.empty();
+
+  @override
+  Future<DocumentEntry?> consumeInitialDocument() async => null;
+
+  @override
   Future<DocumentEntry> markOpened(DocumentEntry document) async {
     final opened = document.copyWith(lastOpenedAt: DateTime.now());
     final index = _documents.indexWhere((item) => item.id == document.id);
@@ -66,4 +80,25 @@ class InMemoryLibraryRepository implements LibraryRepository {
     }
     return opened;
   }
+
+  @override
+  Future<DocumentEntry?> recoverAccess(DocumentEntry document) async {
+    final recovered = document.copyWith(isAvailable: true);
+    final index = _documents.indexWhere((item) => item.id == document.id);
+    if (index >= 0) {
+      _documents[index] = recovered;
+    }
+    return recovered;
+  }
+
+  @override
+  Future<void> removeFromRecents(DocumentEntry document) async {
+    final index = _documents.indexWhere((item) => item.id == document.id);
+    if (index >= 0) {
+      _documents[index] = _documents[index].copyWith(lastOpenedAt: null);
+    }
+  }
+
+  @override
+  void dispose() {}
 }
