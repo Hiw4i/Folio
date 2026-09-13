@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:animations/animations.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../shared/glass/liquid_glass.dart';
@@ -122,6 +123,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               _LibraryContent(
                 controller: widget.controller,
                 scrollController: _scrollController,
+                documentContentSource: widget.documentContentSource,
               ),
               Positioned(
                 left: 0,
@@ -153,10 +155,12 @@ class _LibraryContent extends StatelessWidget {
   const _LibraryContent({
     required this.controller,
     required this.scrollController,
+    required this.documentContentSource,
   });
 
   final LibraryController controller;
   final ScrollController scrollController;
+  final DocumentContentSource documentContentSource;
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +245,11 @@ class _LibraryContent extends StatelessWidget {
           else ...<Widget>[
             if (recent.isNotEmpty) ...<Widget>[
               _SectionHeader(title: 'RECENT', count: recent.length),
-              _DocumentSliver(documents: recent, onOpen: controller.open),
+              _DocumentSliver(
+                documents: recent,
+                controller: controller,
+                documentContentSource: documentContentSource,
+              ),
               const SliverToBoxAdapter(child: SizedBox(height: 23)),
             ],
             if (documents.isNotEmpty) ...<Widget>[
@@ -249,7 +257,11 @@ class _LibraryContent extends StatelessWidget {
                 title: controller.query.isEmpty ? 'DOCUMENTS' : 'RESULTS',
                 count: documents.length,
               ),
-              _DocumentSliver(documents: documents, onOpen: controller.open),
+              _DocumentSliver(
+                documents: documents,
+                controller: controller,
+                documentContentSource: documentContentSource,
+              ),
             ],
             SliverToBoxAdapter(
               child: SizedBox(
@@ -266,10 +278,15 @@ class _LibraryContent extends StatelessWidget {
 }
 
 class _DocumentSliver extends StatelessWidget {
-  const _DocumentSliver({required this.documents, required this.onOpen});
+  const _DocumentSliver({
+    required this.documents,
+    required this.controller,
+    required this.documentContentSource,
+  });
 
   final List<DocumentEntry> documents;
-  final ValueChanged<DocumentEntry> onOpen;
+  final LibraryController controller;
+  final DocumentContentSource documentContentSource;
 
   @override
   Widget build(BuildContext context) {
@@ -281,10 +298,10 @@ class _DocumentSliver extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 640),
             child: Column(
               children: <Widget>[
-                DocumentRow(
-                  key: ValueKey<String>('document_${document.id}'),
+                _DocumentOpenContainer(
                   document: document,
-                  onTap: () => onOpen(document),
+                  controller: controller,
+                  documentContentSource: documentContentSource,
                 ),
                 if (index < documents.length - 1)
                   const Padding(
@@ -299,6 +316,67 @@ class _DocumentSliver extends StatelessWidget {
           ),
         );
       }, childCount: documents.length),
+    );
+  }
+}
+
+class _DocumentOpenContainer extends StatelessWidget {
+  const _DocumentOpenContainer({
+    required this.document,
+    required this.controller,
+    required this.documentContentSource,
+  });
+
+  final DocumentEntry document;
+  final LibraryController controller;
+  final DocumentContentSource documentContentSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    return OpenContainer<void>(
+      tappable: false,
+      closedColor: const Color(0x00000000),
+      openColor: FolioColors.background,
+      middleColor: FolioColors.background,
+      closedElevation: 0,
+      openElevation: 0,
+      closedShape: const RoundedRectangleBorder(),
+      openShape: const RoundedRectangleBorder(),
+      clipBehavior: Clip.none,
+      transitionType: ContainerTransitionType.fade,
+      transitionDuration: reducedMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 260),
+      closedBuilder: (context, openContainer) => DocumentRow(
+        key: ValueKey<String>('document_${document.id}'),
+        document: document,
+        onTap: () {
+          if (!document.isAvailable) {
+            unawaited(controller.markOpened(document));
+            return;
+          }
+          openContainer();
+          // Updating Recents can move this row into another sliver. Wait until
+          // the source container has finished morphing before rebuilding it.
+          if (reducedMotion) {
+            unawaited(controller.markOpened(document));
+          } else {
+            unawaited(
+              Future<void>.delayed(
+                const Duration(milliseconds: 280),
+                () => controller.markOpened(document),
+              ),
+            );
+          }
+        },
+      ),
+      openBuilder: (context, closeContainer) => ReaderScreen(
+        document: document,
+        contentSource: documentContentSource,
+        deferInitialLoad: !reducedMotion,
+        onRemoveFromRecents: () => controller.removeFromRecents(document),
+      ),
     );
   }
 }

@@ -180,13 +180,31 @@ class LibraryController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final updated = await repository.markOpened(document);
-    if (_disposed) {
+    final updated = await markOpened(document);
+    if (updated == null || _disposed) {
       return;
     }
-    _upsert(updated);
     _pendingDocument = updated;
     notifyListeners();
+  }
+
+  /// Records a list-initiated opening without scheduling a second route.
+  ///
+  /// The caller can start its visual transition immediately; the repository
+  /// update completes independently and only refreshes the list when ready.
+  Future<DocumentEntry?> markOpened(DocumentEntry document) async {
+    if (!document.isAvailable) {
+      _unavailableDocument = document;
+      notifyListeners();
+      return null;
+    }
+    final updated = await repository.markOpened(document);
+    if (_disposed) {
+      return null;
+    }
+    _upsert(updated);
+    notifyListeners();
+    return updated;
   }
 
   DocumentEntry? takePendingDocument() {

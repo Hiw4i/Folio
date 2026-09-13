@@ -1,3 +1,4 @@
+import 'package:animations/animations.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/app/folio_app.dart';
@@ -69,6 +70,25 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pump();
     expect(find.text('File access expired'), findsNothing);
+  });
+
+  testWidgets('document rows open the reader with a container transform', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OpenContainer<void>), findsWidgets);
+
+    await tester.tap(find.text('Product principles.pdf'));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('reader_surface')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('dragging the selected filter lens changes the format', (

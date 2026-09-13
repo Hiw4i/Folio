@@ -20,12 +20,15 @@ class ReaderScreen extends StatefulWidget {
     required this.document,
     required this.contentSource,
     required this.onRemoveFromRecents,
+    this.deferInitialLoad = false,
     super.key,
   });
 
   final DocumentEntry document;
   final DocumentContentSource contentSource;
   final Future<void> Function() onRemoveFromRecents;
+  /// Lets the container transform render without competing with document I/O.
+  final bool deferInitialLoad;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -47,6 +50,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   late final Animation<double> _chromeProgress;
   final ValueNotifier<int> _progressPercent = ValueNotifier<int>(0);
   Timer? _searchDebounce;
+  Timer? _initialLoadDelay;
   int _revealGeneration = 0;
   bool _chromeTarget = true;
   bool _searchExpanded = false;
@@ -78,7 +82,15 @@ class _ReaderScreenState extends State<ReaderScreen>
       contentSource: widget.contentSource,
     )..addListener(_rendererChanged);
     _scrollController.addListener(_scrollChanged);
-    unawaited(_renderer.open());
+    if (widget.deferInitialLoad) {
+      _initialLoadDelay = Timer(const Duration(milliseconds: 260), () {
+        if (mounted) {
+          unawaited(_renderer.open());
+        }
+      });
+    } else {
+      unawaited(_renderer.open());
+    }
   }
 
   @override
@@ -385,6 +397,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _initialLoadDelay?.cancel();
     _revealGeneration += 1;
     _renderer
       ..removeListener(_rendererChanged)
