@@ -9,7 +9,18 @@ abstract final class FolioColors {
   static const textTertiary = Color(0xFF6F706D);
   static const separator = Color(0x1FFFFFFF);
   static const glassFill = Color(0x16F4F3EF);
-  static const warmAccent = Color(0xFFE7C768);
+
+  /// Cool neutral selection language. It deliberately avoids the previous
+  /// yellow search treatment and the platform's purple selection handles.
+  static const selection = Color(0x665F6B7C);
+  static const selectionHandle = Color(0xFFC9D1DC);
+  static const cursor = Color(0xFFE1E6ED);
+  static const cursorBackground = Color(0xFF6E7888);
+  static const searchMatch = Color(0x3D8C98A9);
+  static const activeSearchMatch = Color(0xFFD7DEE8);
+  static const activeSearchText = Color(0xFF161A20);
+  static const pdfSearchMatch = Color(0x558C98A9);
+  static const pdfActiveSearchMatch = Color(0xB8D7DEE8);
 }
 
 abstract final class FolioText {

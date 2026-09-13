@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 enum DocumentFormat { pdf, docx, pptx, txt, markdown }
 
@@ -11,12 +12,12 @@ extension DocumentFormatPresentation on DocumentFormat {
     DocumentFormat.markdown => 'md',
   };
 
-  String get glyph => switch (this) {
-    DocumentFormat.pdf => 'PDF',
-    DocumentFormat.docx => 'W',
-    DocumentFormat.pptx => 'P',
-    DocumentFormat.txt => 'TXT',
-    DocumentFormat.markdown => 'MD',
+  IconData get icon => switch (this) {
+    DocumentFormat.pdf => LucideIcons.fileText,
+    DocumentFormat.docx => LucideIcons.fileText,
+    DocumentFormat.pptx => LucideIcons.presentation,
+    DocumentFormat.txt => LucideIcons.fileText,
+    DocumentFormat.markdown => LucideIcons.fileCode,
   };
 
   static DocumentFormat? fromFileName(String name) {

@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 @immutable
 class LiquidShapeTokens {
   const LiquidShapeTokens({
-    this.pressGrowth = 0.055,
+    this.pressGrowth = 0.02,
     this.travelGrowth = 0.09,
     this.travelStretch = 0.34,
   });

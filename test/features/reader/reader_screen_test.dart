@@ -102,6 +102,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('1 of 2'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('reader_search_navigator_glass')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey<String>('reader_next_hit')));
     await tester.pumpAndSettle();
     expect(find.text('2 of 2'), findsOneWidget);
@@ -331,6 +335,14 @@ void main() {
     );
     expect(topGlass, findsWidgets);
 
+    // Tiny adjustments while reading do not start a close animation.
+    await tester.drag(
+      find.byKey(const ValueKey<String>('reader_content')),
+      const Offset(0, -10),
+    );
+    await tester.pumpAndSettle();
+    expect(topGlass, findsWidgets);
+
     await tester.drag(
       find.byKey(const ValueKey<String>('reader_content')),
       const Offset(0, -320),
@@ -349,10 +361,7 @@ void main() {
     // Hidden chrome is unmounted: no backdrop blur cost while reading.
     expect(topChrome, findsOneWidget);
     expect(
-      find.descendant(
-        of: topChrome,
-        matching: find.byType(LiquidGlassControl),
-      ),
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
       findsNothing,
     );
 
@@ -368,10 +377,7 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(
-      find.descendant(
-        of: topChrome,
-        matching: find.byType(LiquidGlassControl),
-      ),
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
       findsWidgets,
     );
     expect(
@@ -520,7 +526,8 @@ TextSelection? _activeSelection(InlineSpan? root) {
     if (span case TextSpan(:final text, :final children, :final style)) {
       final start = offset;
       offset += text?.length ?? 0;
-      if (style?.backgroundColor == FolioColors.warmAccent && offset > start) {
+      if (style?.backgroundColor == FolioColors.activeSearchMatch &&
+          offset > start) {
         result = TextSelection(baseOffset: start, extentOffset: offset);
       }
       if (children != null) {

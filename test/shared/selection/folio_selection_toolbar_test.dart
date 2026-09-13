@@ -35,10 +35,7 @@ void main() {
     tester,
   ) async {
     await pumpToolbar(tester, <ContextMenuButtonItem>[
-      ContextMenuButtonItem(
-        onPressed: () {},
-        type: ContextMenuButtonType.copy,
-      ),
+      ContextMenuButtonItem(onPressed: () {}, type: ContextMenuButtonType.copy),
       ContextMenuButtonItem(
         onPressed: () {},
         type: ContextMenuButtonType.selectAll,
@@ -55,14 +52,8 @@ void main() {
 
   testWidgets('filters out unrelated system actions', (tester) async {
     await pumpToolbar(tester, <ContextMenuButtonItem>[
-      ContextMenuButtonItem(
-        onPressed: () {},
-        type: ContextMenuButtonType.cut,
-      ),
-      ContextMenuButtonItem(
-        onPressed: () {},
-        type: ContextMenuButtonType.copy,
-      ),
+      ContextMenuButtonItem(onPressed: () {}, type: ContextMenuButtonType.cut),
+      ContextMenuButtonItem(onPressed: () {}, type: ContextMenuButtonType.copy),
       ContextMenuButtonItem(
         onPressed: () {},
         type: ContextMenuButtonType.paste,
@@ -116,15 +107,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('tapping the select-all icon invokes its action', (
-    tester,
-  ) async {
+  testWidgets('tapping the select-all icon invokes its action', (tester) async {
     var activations = 0;
     await pumpToolbar(tester, <ContextMenuButtonItem>[
-      ContextMenuButtonItem(
-        onPressed: () {},
-        type: ContextMenuButtonType.copy,
-      ),
+      ContextMenuButtonItem(onPressed: () {}, type: ContextMenuButtonType.copy),
       ContextMenuButtonItem(
         onPressed: () => activations += 1,
         type: ContextMenuButtonType.selectAll,
@@ -143,10 +129,7 @@ void main() {
     tester,
   ) async {
     await pumpToolbar(tester, <ContextMenuButtonItem>[
-      ContextMenuButtonItem(
-        onPressed: () {},
-        type: ContextMenuButtonType.copy,
-      ),
+      ContextMenuButtonItem(onPressed: () {}, type: ContextMenuButtonType.copy),
       ContextMenuButtonItem(
         onPressed: () {},
         type: ContextMenuButtonType.selectAll,
@@ -182,7 +165,10 @@ void main() {
     final selectAllRect = tester.getRect(
       find.byKey(const ValueKey<String>('folio_toolbar_select_all')),
     );
-    expect(copyRect.center.dy, moreOrLessEquals(pillRect.center.dy, epsilon: 1));
+    expect(
+      copyRect.center.dy,
+      moreOrLessEquals(pillRect.center.dy, epsilon: 1),
+    );
     expect(
       selectAllRect.center.dy,
       moreOrLessEquals(pillRect.center.dy, epsilon: 1),

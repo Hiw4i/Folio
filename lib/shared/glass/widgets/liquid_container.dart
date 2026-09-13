@@ -240,155 +240,155 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
         maxHeight: boxSize.height,
         alignment: Alignment.center,
         child: AnimatedBuilder(
-        animation: motion,
-        builder: (context, _) {
-          final baseRect = Rect.fromCenter(
-            center: (Offset.zero & boxSize).center,
-            width: size.width,
-            height: size.height,
-          );
-          final materialRect = LiquidShape.expandedRect(
-            baseRect,
-            press: motion.press,
-            tokens: shapeTokens,
-          );
-          // Same origin/velocity rule as the morphing menu reference: the
-          // deformation follows the live pointer light, velocity always feeds
-          // the shape (no frozen press origin, no displacement gating).
-          final path = GlassGeometryFrame.deformedCapsule(
-            rect: materialRect,
-            origin: motion.lightPosition == Offset.zero
+          animation: motion,
+          builder: (context, _) {
+            final baseRect = Rect.fromCenter(
+              center: (Offset.zero & boxSize).center,
+              width: size.width,
+              height: size.height,
+            );
+            final materialRect = LiquidShape.expandedRect(
+              baseRect,
+              press: motion.press,
+              tokens: shapeTokens,
+            );
+            // Same origin/velocity rule as the morphing menu reference: the
+            // deformation follows the live pointer light, velocity always feeds
+            // the shape (no frozen press origin, no displacement gating).
+            final path = GlassGeometryFrame.deformedCapsule(
+              rect: materialRect,
+              origin: motion.lightPosition == Offset.zero
+                  ? baseRect.center
+                  : motion.lightPosition,
+              pull: motion.displacement,
+              velocity: motion.pointerVelocity,
+              press: motion.press,
+            );
+            final light = motion.lightPosition == Offset.zero
                 ? baseRect.center
-                : motion.lightPosition,
-            pull: motion.displacement,
-            velocity: motion.pointerVelocity,
-            press: motion.press,
-          );
-          final light = motion.lightPosition == Offset.zero
-              ? baseRect.center
-              : motion.lightPosition;
-          final contentOffset = LiquidContent.offset(
-            displacement: motion.displacement,
-            velocity: motion.pointerVelocity,
-            press: motion.press,
-          );
-          final interactive = onTap != null;
-          final transitionOpacity =
-              LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
-          // opaque MUST stay true: with false, MouseRegion reports a miss
-          // upward even when its child was hit, ancestor Stacks keep
-          // descending, and taps/drags leak to content behind the glass.
-          return MouseRegion(
-            cursor: interactive
-                ? SystemMouseCursors.click
-                : MouseCursor.defer,
-            opaque: true,
-            onHover: (event) => motion.updateHover(event.localPosition),
-            child: Listener(
-              behavior: interactive
-                  ? HitTestBehavior.opaque
-                  : HitTestBehavior.translucent,
-              onPointerDown: (event) {
-                if (_pointer != null ||
-                    !baseRect
-                        .inflate(hitSlop)
-                        .contains(event.localPosition)) {
-                  return;
-                }
-                _pointer = event.pointer;
-                motion.beginPointer(
-                  position: event.localPosition,
-                  timestamp: event.timeStamp,
-                  target: GlassPointerTarget.main,
-                );
-              },
-              onPointerMove: (event) {
-                if (_pointer == event.pointer) {
-                  motion.movePointer(
+                : motion.lightPosition;
+            final contentOffset = LiquidContent.offset(
+              displacement: motion.displacement,
+              velocity: motion.pointerVelocity,
+              press: motion.press,
+            );
+            final interactive = onTap != null;
+            final transitionOpacity =
+                LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
+            // opaque MUST stay true: with false, MouseRegion reports a miss
+            // upward even when its child was hit, ancestor Stacks keep
+            // descending, and taps/drags leak to content behind the glass.
+            return MouseRegion(
+              cursor: interactive
+                  ? SystemMouseCursors.click
+                  : MouseCursor.defer,
+              opaque: true,
+              onHover: (event) => motion.updateHover(event.localPosition),
+              child: Listener(
+                behavior: interactive
+                    ? HitTestBehavior.opaque
+                    : HitTestBehavior.translucent,
+                onPointerDown: (event) {
+                  if (_pointer != null ||
+                      !baseRect
+                          .inflate(hitSlop)
+                          .contains(event.localPosition)) {
+                    return;
+                  }
+                  _pointer = event.pointer;
+                  motion.beginPointer(
+                    position: event.localPosition,
+                    timestamp: event.timeStamp,
+                    target: GlassPointerTarget.main,
+                  );
+                },
+                onPointerMove: (event) {
+                  if (_pointer == event.pointer) {
+                    motion.movePointer(
+                      position: event.localPosition,
+                      timestamp: event.timeStamp,
+                    );
+                  }
+                },
+                onPointerUp: (event) {
+                  if (_pointer != event.pointer) {
+                    return;
+                  }
+                  final inside = baseRect
+                      .inflate(hitSlop)
+                      .contains(event.localPosition);
+                  motion.endPointer(
                     position: event.localPosition,
                     timestamp: event.timeStamp,
                   );
-                }
-              },
-              onPointerUp: (event) {
-                if (_pointer != event.pointer) {
-                  return;
-                }
-                final inside = baseRect
-                    .inflate(hitSlop)
-                    .contains(event.localPosition);
-                motion.endPointer(
-                  position: event.localPosition,
-                  timestamp: event.timeStamp,
-                );
-                _pointer = null;
-                if (inside) {
-                  onTap?.call();
-                }
-              },
-              onPointerCancel: (event) {
-                if (_pointer == event.pointer) {
-                  motion.cancelPointer();
                   _pointer = null;
-                }
-              },
-              child: Semantics(
-                button: interactive,
-                label: widget.semanticsLabel,
-                onTap: onTap,
-                child: Focus(
-                  focusNode: focus,
-                  canRequestFocus: interactive,
-                  onKeyEvent: (node, event) {
-                    if (onTap != null &&
-                        event is KeyDownEvent &&
-                        (event.logicalKey == LogicalKeyboardKey.enter ||
-                            event.logicalKey == LogicalKeyboardKey.space)) {
-                      onTap.call();
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: SizedBox.fromSize(
-                    size: boxSize,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: <Widget>[
-                        GlassShell(
-                          path: path,
-                          glowCenter: light,
-                          press: motion.press,
-                          focused: focus.hasFocus,
-                          blurSigma: motion.backdropBlurSigma,
-                        ),
-                        // Passive/cluster glass has no TouchShield on top (it
-                        // would eat inner buttons in the gesture arena);
-                        // instead a non-competitive wall behind the content
-                        // stops the traversal so nothing behind ever sees
-                        // taps or drags started on the material.
-                        if (!interactive) const GlassHitBlocker(),
-                        Opacity(
-                          opacity: transitionOpacity,
-                          child: Center(
-                            child: Transform.translate(
-                              offset: contentOffset,
-                              child: Transform.scale(
-                                scale: LiquidContent.scale(motion.press),
-                                child: widget.child,
+                  if (inside) {
+                    onTap?.call();
+                  }
+                },
+                onPointerCancel: (event) {
+                  if (_pointer == event.pointer) {
+                    motion.cancelPointer();
+                    _pointer = null;
+                  }
+                },
+                child: Semantics(
+                  button: interactive,
+                  label: widget.semanticsLabel,
+                  onTap: onTap,
+                  child: Focus(
+                    focusNode: focus,
+                    canRequestFocus: interactive,
+                    onKeyEvent: (node, event) {
+                      if (onTap != null &&
+                          event is KeyDownEvent &&
+                          (event.logicalKey == LogicalKeyboardKey.enter ||
+                              event.logicalKey == LogicalKeyboardKey.space)) {
+                        onTap.call();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: SizedBox.fromSize(
+                      size: boxSize,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          GlassShell(
+                            path: path,
+                            glowCenter: light,
+                            press: motion.press,
+                            focused: focus.hasFocus,
+                            blurSigma: motion.backdropBlurSigma,
+                          ),
+                          // Passive/cluster glass has no TouchShield on top (it
+                          // would eat inner buttons in the gesture arena);
+                          // instead a non-competitive wall behind the content
+                          // stops the traversal so nothing behind ever sees
+                          // taps or drags started on the material.
+                          if (!interactive) const GlassHitBlocker(),
+                          Opacity(
+                            opacity: transitionOpacity,
+                            child: Center(
+                              child: Transform.translate(
+                                offset: contentOffset,
+                                child: Transform.scale(
+                                  scale: LiquidContent.scale(motion.press),
+                                  child: widget.child,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        // Single-action glass absorbs behind it on top.
-                        if (interactive) const GlassTouchShield(),
-                      ],
+                          // Single-action glass absorbs behind it on top.
+                          if (interactive) const GlassTouchShield(),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
         ),
       ),
     );

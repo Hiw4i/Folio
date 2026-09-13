@@ -22,7 +22,7 @@ class LibraryBackground extends StatelessWidget {
             stops: <double>[0, 0.42, 1],
           ),
         ),
-        child: const SizedBox.shrink(),
+        child: SizedBox.shrink(),
       ),
     );
   }

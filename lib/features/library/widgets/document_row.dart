@@ -111,15 +111,10 @@ class _FormatGlyph extends StatelessWidget {
         border: Border.all(color: const Color(0x1FFFFFFF), width: 0.8),
       ),
       alignment: Alignment.center,
-      child: Text(
-        format.glyph,
-        style: TextStyle(
-          fontFamily: 'Inter',
-          color: FolioColors.textPrimary.withValues(alpha: 0.88),
-          fontSize: format == DocumentFormat.txt ? 9.5 : 11.5,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.2,
-        ),
+      child: Icon(
+        format.icon,
+        size: 24,
+        color: FolioColors.textPrimary.withValues(alpha: 0.88),
       ),
     );
   }

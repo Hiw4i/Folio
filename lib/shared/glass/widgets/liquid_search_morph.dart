@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../selection/folio_selection_toolbar.dart';
+import '../../theme/folio_theme.dart';
 import '../core/glass_geometry.dart';
 import '../core/liquid_shape.dart';
 import '../motion/glass_motion_controller.dart';
@@ -164,9 +165,10 @@ class LiquidSearchMorph extends StatelessWidget {
                                 fontSize: 16,
                                 height: 1.2,
                               ),
-                              cursorColor: const Color(0xFFE7C768),
-                              backgroundCursorColor: const Color(0xFF736A4C),
-                              selectionColor: const Color(0x55E7C768),
+                              cursorColor: FolioColors.cursor,
+                              backgroundCursorColor:
+                                  FolioColors.cursorBackground,
+                              selectionColor: FolioColors.selection,
                               maxLines: 1,
                               keyboardType: TextInputType.text,
                               textInputAction: TextInputAction.search,

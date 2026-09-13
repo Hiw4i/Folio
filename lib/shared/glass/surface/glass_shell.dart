@@ -47,7 +47,7 @@ class GlassShell extends StatelessWidget {
           children: <Widget>[
             ClipPath(
               clipper: _ShellClipper(path),
-              child: BackdropFilter(
+              child: BackdropFilter.grouped(
                 filter: sigma == null
                     ? backdropBlur
                     : LiquidBlur.filterFor(sigma),

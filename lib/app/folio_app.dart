@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart'
-    show DefaultMaterialLocalizations, DefaultSelectionStyle;
+    show
+        DefaultMaterialLocalizations,
+        DefaultSelectionStyle,
+        TextSelectionTheme,
+        TextSelectionThemeData;
 import 'package:flutter/widgets.dart';
 
 import '../features/library/data/file_library_repository.dart';
@@ -64,14 +68,21 @@ class _FolioAppState extends State<FolioApp> {
         );
       },
       builder: (context, child) {
-        return ScrollConfiguration(
-          behavior: const FolioScrollBehavior(),
-          child: DefaultSelectionStyle(
-            cursorColor: FolioColors.warmAccent,
-            selectionColor: const Color(0x66E7C768),
-            child: DefaultTextStyle(
-              style: FolioText.body,
-              child: child ?? const SizedBox.shrink(),
+        return TextSelectionTheme(
+          data: const TextSelectionThemeData(
+            cursorColor: FolioColors.cursor,
+            selectionColor: FolioColors.selection,
+            selectionHandleColor: FolioColors.selectionHandle,
+          ),
+          child: ScrollConfiguration(
+            behavior: const FolioScrollBehavior(),
+            child: DefaultSelectionStyle(
+              cursorColor: FolioColors.cursor,
+              selectionColor: FolioColors.selection,
+              child: DefaultTextStyle(
+                style: FolioText.body,
+                child: child ?? const SizedBox.shrink(),
+              ),
             ),
           ),
         );

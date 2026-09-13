@@ -23,7 +23,7 @@ class PdfDocumentView extends StatefulWidget {
 
   final PdfDocumentRenderer renderer;
   final VoidCallback onContentTap;
-  final ValueChanged<bool> onVerticalReadingGesture;
+  final ValueChanged<double> onVerticalReadingGesture;
 
   @override
   State<PdfDocumentView> createState() => _PdfDocumentViewState();
@@ -34,7 +34,6 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
 
   final PdfViewerController _controller = PdfViewerController();
   late final PdfViewerParams _params;
-  double _verticalGestureTravel = 0;
   bool _selectingText = false;
 
   @override
@@ -67,8 +66,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       scrollPhysicsScale: const BouncingScrollPhysics(
         decelerationRate: ScrollDecelerationRate.fast,
       ),
-      matchTextColor: const Color(0x55E7C768),
-      activeMatchTextColor: const Color(0xB8E7C768),
+      matchTextColor: FolioColors.pdfSearchMatch,
+      activeMatchTextColor: FolioColors.pdfActiveSearchMatch,
       pagePaintCallbacks: <PdfViewerPagePaintCallback>[
         widget.renderer.paintSearchMatches,
       ],
@@ -80,7 +79,6 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       onViewerReady: widget.renderer.attachViewer,
       onDocumentLoadFinished: widget.renderer.documentLoadFinished,
       onPageChanged: widget.renderer.pageChanged,
-      onInteractionStart: (_) => _verticalGestureTravel = 0,
       onInteractionUpdate: _interactionUpdated,
       onGeneralTap: _generalTap,
       loadingBannerBuilder: (context, downloaded, total) {
@@ -109,10 +107,9 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     if (_selectingText || (details.scale - 1).abs() > 0.015) {
       return;
     }
-    _verticalGestureTravel += details.focalPointDelta.dy;
-    if (_verticalGestureTravel.abs() >= 9) {
-      widget.onVerticalReadingGesture(_verticalGestureTravel < 0);
-      _verticalGestureTravel = 0;
+    final scrollDelta = -details.focalPointDelta.dy;
+    if (scrollDelta != 0) {
+      widget.onVerticalReadingGesture(scrollDelta);
     }
   }
 

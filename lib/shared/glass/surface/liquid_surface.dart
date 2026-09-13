@@ -132,7 +132,7 @@ class LiquidCase extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: radius,
-          child: BackdropFilter(
+          child: BackdropFilter.grouped(
             filter: transitionBlur == null
                 ? LiquidBlur.filter
                 : LiquidBlur.filterFor(transitionBlur),

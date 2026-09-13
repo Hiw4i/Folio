@@ -16,19 +16,18 @@ const String _passiveEnd = '\u{F0001}';
 const String _activeStart = '\u{F0002}';
 const String _activeEnd = '\u{F0003}';
 
-final List<markdown.InlineSyntax> _searchHitSyntaxes =
-    <markdown.InlineSyntax>[
-      _SearchHitSyntax(
-        tag: 'folio-search-hit',
-        start: _passiveStart,
-        end: _passiveEnd,
-      ),
-      _SearchHitSyntax(
-        tag: 'folio-search-hit-active',
-        start: _activeStart,
-        end: _activeEnd,
-      ),
-    ];
+final List<markdown.InlineSyntax> _searchHitSyntaxes = <markdown.InlineSyntax>[
+  _SearchHitSyntax(
+    tag: 'folio-search-hit',
+    start: _passiveStart,
+    end: _passiveEnd,
+  ),
+  _SearchHitSyntax(
+    tag: 'folio-search-hit-active',
+    start: _activeStart,
+    end: _activeEnd,
+  ),
+];
 
 final MarkdownElementBuilder _passiveSearchHitBuilder = _SearchHitBuilder(
   active: false,
@@ -177,10 +176,12 @@ List<InlineSpan> _highlightedSpans(
       TextSpan(
         text: chunk.text.substring(start, end),
         style: baseStyle.copyWith(
-          color: active ? const Color(0xFF17130A) : FolioColors.textPrimary,
+          color: active
+              ? FolioColors.activeSearchText
+              : FolioColors.textPrimary,
           backgroundColor: active
-              ? FolioColors.warmAccent
-              : const Color(0x3DE7C768),
+              ? FolioColors.activeSearchMatch
+              : FolioColors.searchMatch,
           fontWeight: active ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -287,13 +288,15 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
     return DecoratedBox(
       key: active ? targetKey : null,
       decoration: BoxDecoration(
-        color: active ? FolioColors.warmAccent : const Color(0x3DE7C768),
-        borderRadius: BorderRadius.circular(3),
+        color: active ? FolioColors.activeSearchMatch : FolioColors.searchMatch,
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         element.textContent,
         style: (parentStyle ?? preferredStyle)?.copyWith(
-          color: active ? const Color(0xFF17130A) : FolioColors.textPrimary,
+          color: active
+              ? FolioColors.activeSearchText
+              : FolioColors.textPrimary,
           fontWeight: active ? FontWeight.w600 : null,
         ),
       ),
