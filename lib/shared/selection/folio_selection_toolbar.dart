@@ -3,7 +3,7 @@ import 'package:flutter/material.dart'
 import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
-import '../glass/liquid_container.dart';
+import '../glass/liquid_glass.dart';
 import '../theme/folio_theme.dart';
 
 /// Custom context menu builder for [SelectionArea] content (plain reader text).

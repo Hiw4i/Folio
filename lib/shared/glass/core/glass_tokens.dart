@@ -70,7 +70,8 @@ class GlassTokens {
     this.horizontalMargin = 16,
     this.maxSearchWidth = 420,
     this.opticalMargin = 44,
-    this.blurSigma = 13.5,
+    this.blurSigma = 12,
+    this.minMotionBlurSigma = 9.0,
   });
 
   final double collapsedDiameter;
@@ -81,5 +82,11 @@ class GlassTokens {
   final double horizontalMargin;
   final double maxSearchWidth;
   final double opticalMargin;
+
+  /// Rest-state backdrop blur, pixel for pixel.
   final double blurSigma;
+
+  /// Floor for the adaptive backdrop blur while the material moves fast
+  /// (iOS-style: cheaper blur masked by motion, full blur restored at rest).
+  final double minMotionBlurSigma;
 }

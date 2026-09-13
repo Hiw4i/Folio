@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import 'glass_tokens.dart';
+
 /// Shared fixed-step driver for every interactive liquid-glass component.
 ///
 /// Subclasses only describe one integration step and their resting state. This
@@ -31,6 +33,35 @@ abstract class LiquidMotionController extends ChangeNotifier {
   @protected
   void wake() {
     _ticker?.muted = false;
+  }
+
+  /// Adaptive backdrop clarity: 1.0 at rest (full [GlassTokens.blurSigma]),
+  /// easing down while the material moves fast. Subclasses feed it inside
+  /// [integrate] and gate [isAtRest] on its return; surfaces read
+  /// [backdropBlurSigma]. Snaps exactly to 1.0 when settled, so rest frames
+  /// stay pixel-identical.
+  double backdropScale = 1.0;
+
+  double get backdropBlurSigma {
+    const tokens = GlassTokens();
+    if (backdropScale >= 0.999) {
+      return tokens.blurSigma;
+    }
+    final sigma = tokens.blurSigma * backdropScale;
+    return (sigma * 2).roundToDouble() / 2;
+  }
+
+  @protected
+  void trackBackdropBlur({
+    required double pointerSpeedPx,
+    double morphSpeed = 0,
+    required double dt,
+  }) {
+    backdropScale = LiquidBackdropAdapt.approach(
+      value: backdropScale,
+      target: LiquidBackdropAdapt.targetScale(pointerSpeedPx, morphSpeed),
+      dt: dt,
+    );
   }
 
   @visibleForTesting
@@ -112,5 +143,50 @@ abstract final class LiquidSpring {
       return value;
     }
     return value / value.distance * maximum;
+  }
+}
+
+/// Single policy for the iOS-style adaptive backdrop blur shared by every
+/// liquid controller: full blur below [_fullSpeed], minimum blur at/above
+/// [_floorSpeed], fast attack so the saving applies while moving, slower
+/// release so the restore never shimmers.
+abstract final class LiquidBackdropAdapt {
+  static const double _fullSpeed = 250.0;
+  static const double _floorSpeed = 3200.0;
+  static const double _attackRate = 25.0;
+
+  /// Fast release (~100ms): the restore always finishes before the legacy
+  /// rest gates, so the ticker mute rhythm — and golden capture frames —
+  /// stay exactly as before. The 0.5-quantized sigma hides the tail.
+  static const double _releaseRate = 30.0;
+
+  /// Snap band: inside it the quantized sigma already equals rest blur,
+  /// so jumping to 1.0 is pixel-invisible.
+  static const double settleBand = 0.015;
+
+  static double targetScale(double pointerSpeedPx, [double morphSpeed = 0]) {
+    const tokens = GlassTokens();
+    final minScale = tokens.minMotionBlurSigma / tokens.blurSigma;
+    final speed = pointerSpeedPx + morphSpeed * 900.0;
+    final t = ((speed - _fullSpeed) / (_floorSpeed - _fullSpeed)).clamp(
+      0.0,
+      1.0,
+    );
+    return 1.0 - t * (1.0 - minScale);
+  }
+
+  static double approach({
+    required double value,
+    required double target,
+    required double dt,
+  }) {
+    const tokens = GlassTokens();
+    final minScale = tokens.minMotionBlurSigma / tokens.blurSigma;
+    final rate = target < value ? _attackRate : _releaseRate;
+    final next = value + (target - value) * (1 - math.exp(-dt * rate));
+    if (target >= 1.0 && (1.0 - next).abs() < settleBand) {
+      return 1.0;
+    }
+    return next.clamp(minScale, 1.0);
   }
 }

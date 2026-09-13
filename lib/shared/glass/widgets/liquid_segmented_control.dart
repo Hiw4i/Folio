@@ -3,12 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import '../theme/folio_theme.dart';
-import 'glass_geometry.dart';
-import 'glass_shell.dart';
-import 'liquid_shape.dart';
-import 'liquid_segmented_controller.dart';
-import 'liquid_surface.dart';
+import '../../theme/folio_theme.dart';
+import '../core/glass_geometry.dart';
+import '../core/liquid_shape.dart';
+import '../motion/liquid_segmented_controller.dart';
+import '../surface/glass_shell.dart';
+import '../surface/liquid_surface.dart';
 
 @immutable
 class LiquidSegment<T> {
@@ -266,6 +266,7 @@ class _LiquidLens extends StatelessWidget {
         glowCenter: localPointer,
         press: motion.press * (pointerInside ? 1 : 0.22),
         focused: focused,
+        blurSigma: motion.backdropBlurSigma,
       ),
     );
   }

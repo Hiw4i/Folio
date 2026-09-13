@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'glass_geometry.dart';
-import 'glass_motion_controller.dart';
-import 'glass_tokens.dart';
+import '../core/glass_geometry.dart';
+import '../core/glass_tokens.dart';
+import '../motion/glass_motion_controller.dart';
 import 'liquid_search_morph.dart';
 
 class LiquidSearchControl extends StatefulWidget {

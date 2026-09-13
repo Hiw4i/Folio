@@ -10,8 +10,8 @@ import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
-import 'package:folio/shared/glass/liquid_glass_control.dart';
-import 'package:folio/shared/glass/liquid_search_control.dart';
+import 'package:folio/shared/glass/widgets/liquid_glass_control.dart';
+import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 import 'package:folio/shared/theme/folio_theme.dart';
 
 void main() {
@@ -325,25 +325,55 @@ void main() {
   ) async {
     await openReader(tester);
     final topChrome = find.byKey(const ValueKey<String>('reader_top_chrome'));
+    final topGlass = find.descendant(
+      of: topChrome,
+      matching: find.byType(LiquidGlassControl),
+    );
+    expect(topGlass, findsWidgets);
 
     await tester.drag(
       find.byKey(const ValueKey<String>('reader_content')),
       const Offset(0, -320),
     );
+    // First pump delivers the scroll notification and starts reverse;
+    // second pump catches the shared slide mid-flight.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    final midHideTransform = find.descendant(
+      of: topChrome,
+      matching: find.byType(Transform),
+    );
+    expect(midHideTransform, findsWidgets);
+
     await tester.pumpAndSettle();
+    // Hidden chrome is unmounted: no backdrop blur cost while reading.
+    expect(topChrome, findsOneWidget);
     expect(
-      tester
-          .widget<IgnorePointer>(
-            find
-                .descendant(of: topChrome, matching: find.byType(IgnorePointer))
-                .first,
-          )
-          .ignoring,
-      isTrue,
+      find.descendant(
+        of: topChrome,
+        matching: find.byType(LiquidGlassControl),
+      ),
+      findsNothing,
     );
 
     await tester.tapAt(const Offset(200, 430));
+    // Mid-show: slide runs in the opposite direction as well.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final midShowTransform = find.descendant(
+      of: topChrome,
+      matching: find.byType(Transform),
+    );
+    expect(midShowTransform, findsWidgets);
+
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: topChrome,
+        matching: find.byType(LiquidGlassControl),
+      ),
+      findsWidgets,
+    );
     expect(
       tester
           .widget<IgnorePointer>(

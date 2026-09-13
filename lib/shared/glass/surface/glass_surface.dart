@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
-import 'glass_geometry.dart';
-import 'glass_motion_controller.dart';
+import '../core/glass_geometry.dart';
+import '../motion/glass_motion_controller.dart';
 import 'glass_shell.dart';
 
 class LiquidGlassSurface extends StatelessWidget {
@@ -28,6 +28,7 @@ class LiquidGlassSurface extends StatelessWidget {
         glowCenter: pointer,
         press: motion.press,
         focused: focused,
+        blurSigma: motion.backdropBlurSigma,
       ),
     );
   }

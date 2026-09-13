@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/shared/glass/glass_motion_controller.dart';
+import 'package:folio/shared/glass/motion/glass_motion_controller.dart';
 
 /// Plain buttons run [GlassMotionController] with `morphEnabled: false` —
 /// the same code path as a collapsed menu button. This locks the parity:

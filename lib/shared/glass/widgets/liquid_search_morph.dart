@@ -1,13 +1,14 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import '../selection/folio_selection_toolbar.dart';
-import 'glass_geometry.dart';
-import 'glass_motion_controller.dart';
-import 'glass_surface.dart';
+import '../../selection/folio_selection_toolbar.dart';
+import '../core/glass_geometry.dart';
+import '../core/liquid_shape.dart';
+import '../motion/glass_motion_controller.dart';
+import '../surface/glass_surface.dart';
+import '../surface/liquid_surface.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
-import 'liquid_shape.dart';
 
 class LiquidSearchMorph extends StatelessWidget {
   const LiquidSearchMorph({
@@ -43,6 +44,7 @@ class LiquidSearchMorph extends StatelessWidget {
   Widget build(BuildContext context) {
     final contentOpacity = ((frame.morph - 0.52) / 0.30).clamp(0.0, 1.0);
     final cancelOpacity = ((frame.separation - 0.45) / 0.42).clamp(0.0, 1.0);
+    final transitionOpacity = LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
     final selfBlur = LiquidContent.blurSigma(
       morphVelocity: motion.morphVelocity,
       separationVelocity: motion.separationVelocity,
@@ -95,7 +97,8 @@ class LiquidSearchMorph extends StatelessWidget {
                 ),
                 child: CustomPaint(
                   painter: _SearchPainter(
-                    opacity: 0.88 + motion.submitEnergy * 0.12,
+                    opacity:
+                        (0.88 + motion.submitEnergy * 0.12) * transitionOpacity,
                   ),
                 ),
               ),
@@ -121,7 +124,7 @@ class LiquidSearchMorph extends StatelessWidget {
                   onPointerDown: (_) => onTapInput(),
                   child: soften(
                     Opacity(
-                      opacity: contentOpacity,
+                      opacity: contentOpacity * transitionOpacity,
                       child: Stack(
                         alignment: Alignment.centerLeft,
                         children: <Widget>[
@@ -188,7 +191,7 @@ class LiquidSearchMorph extends StatelessWidget {
             child: IgnorePointer(
               child: soften(
                 Opacity(
-                  opacity: cancelOpacity,
+                  opacity: cancelOpacity * transitionOpacity,
                   child: Transform.scale(
                     scale: LiquidShape.contentScale(
                       frame.deformCancel ? frame.press : 0,

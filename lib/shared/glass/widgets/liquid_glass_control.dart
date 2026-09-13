@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../core/liquid_shape.dart';
 import 'liquid_container.dart';
-import 'liquid_shape.dart';
 
 /// Reusable liquid-glass interaction primitive for text, icons and future
 /// compound controls. It owns hit testing, focus, pointer physics and painting;

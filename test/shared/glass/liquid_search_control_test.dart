@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/shared/glass/liquid_search_control.dart';
+import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 
 void main() {
   testWidgets('search glass absorbs dragging before content behind it', (

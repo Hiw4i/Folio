@@ -7,7 +7,7 @@ import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
-import 'package:folio/shared/glass/liquid_search_control.dart';
+import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 
 void main() {
   setUpAll(() async {

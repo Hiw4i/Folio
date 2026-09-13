@@ -1,12 +1,13 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'glass_geometry.dart';
-import 'glass_motion_controller.dart';
-import 'glass_shell.dart';
+import '../core/glass_geometry.dart';
+import '../core/liquid_shape.dart';
+import '../motion/glass_motion_controller.dart';
+import '../surface/glass_shell.dart';
+import '../surface/liquid_surface.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
-import 'liquid_shape.dart';
 
 @immutable
 class LiquidMorphGeometry {
@@ -67,6 +68,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
   final FocusNode _focus = FocusNode(debugLabel: 'Liquid morph control');
   int? _pointer;
   bool _reportedExpanded = false;
+  bool _reducedMotion = false;
 
   bool get isExpanded => _motion.wantsOpen || _motion.morph > 0.02;
 
@@ -84,7 +86,8 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _motion.setReducedMotion(MediaQuery.disableAnimationsOf(context));
+    _reducedMotion = MediaQuery.disableAnimationsOf(context);
+    _motion.setReducedMotion(_reducedMotion);
   }
 
   void _motionChanged() {
@@ -182,10 +185,12 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
               0.0,
               1.0,
             );
+            final transitionOpacity =
+                LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
             final selfBlur = LiquidContent.blurSigma(
               morphVelocity: _motion.morphVelocity,
               separationVelocity: _motion.separationVelocity,
-              reducedMotion: MediaQuery.disableAnimationsOf(context),
+              reducedMotion: _reducedMotion,
             );
 
             Widget soften(Widget value) =>
@@ -249,6 +254,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                       glowCenter: origin - opticalBounds.topLeft,
                       press: _motion.press,
                       focused: _focus.hasFocus,
+                      blurSigma: _motion.backdropBlurSigma,
                     ),
                   ),
                   Positioned.fromRect(
@@ -268,7 +274,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                               child: ExcludeSemantics(
                                 child: soften(
                                   Opacity(
-                                    opacity: collapsedOpacity,
+                                    opacity: collapsedOpacity * transitionOpacity,
                                     child: Transform.translate(
                                       offset: contentOffset,
                                       child: Transform.scale(
@@ -295,7 +301,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                                   excluding: morph < 0.82,
                                   child: soften(
                                     Opacity(
-                                      opacity: expandedOpacity,
+                                      opacity: expandedOpacity * transitionOpacity,
                                       child: Transform.translate(
                                         offset: contentOffset,
                                         child: widget.expandedChild,

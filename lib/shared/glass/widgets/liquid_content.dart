@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
-import 'liquid_shape.dart';
+import '../core/liquid_shape.dart';
 
 /// Shared foreground helpers so every liquid surface moves its content
 /// identically: slight inertial follow, subtle press scale and a small

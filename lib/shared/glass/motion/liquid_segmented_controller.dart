@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-import 'glass_tokens.dart';
-import 'liquid_motion_controller.dart';
+import '../core/glass_tokens.dart';
+import '../core/liquid_motion_controller.dart';
 
 class LiquidSegmentedController extends LiquidMotionController {
   LiquidSegmentedController({
@@ -37,6 +37,7 @@ class LiquidSegmentedController extends LiquidMotionController {
   double _pointerSpeed = 0;
   double _lastPointerX = 0;
   Duration _lastPointerTime = Duration.zero;
+  double _lastItemExtent = 0;
   Offset _lightTarget = Offset.zero;
 
   double position;
@@ -85,6 +86,7 @@ class LiquidSegmentedController extends LiquidMotionController {
     _lightTarget = position;
     _lastPointerX = position.dx;
     _lastPointerTime = timestamp;
+    _lastItemExtent = itemExtent;
     _pointerSpeed = 0;
     if (dragLens) {
       final pointerPosition = position.dx / itemExtent - 0.5;
@@ -101,6 +103,9 @@ class LiquidSegmentedController extends LiquidMotionController {
     required double itemExtent,
   }) {
     _lightTarget = position;
+    if (itemExtent > 0) {
+      _lastItemExtent = itemExtent;
+    }
     if (!_pointerDown || itemExtent <= 0) {
       wake();
       return;
@@ -186,6 +191,7 @@ class LiquidSegmentedController extends LiquidMotionController {
       stretchVelocity.abs() < 0.01 &&
       press < 0.002 &&
       pressVelocity.abs() < 0.01 &&
+      (backdropScale - 1.0).abs() < LiquidBackdropAdapt.settleBand &&
       (!_pointerDown && (lightPosition - _lightTarget).distance < 0.05);
 
   @override
@@ -229,6 +235,13 @@ class LiquidSegmentedController extends LiquidMotionController {
     );
     press = pressing.$1.clamp(0.0, 1.08);
     pressVelocity = pressing.$2;
+    trackBackdropBlur(
+      pointerSpeedPx:
+          (velocity.abs() + _pointerSpeed.abs()) *
+          (_lastItemExtent <= 0 ? 200.0 : _lastItemExtent),
+      morphSpeed: stretchVelocity.abs() * 0.4,
+      dt: dt,
+    );
     lightPosition = Offset.lerp(
       lightPosition,
       _lightTarget,

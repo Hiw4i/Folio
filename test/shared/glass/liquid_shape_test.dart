@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
-import 'package:folio/shared/glass/glass_geometry.dart';
-import 'package:folio/shared/glass/glass_motion_controller.dart';
-import 'package:folio/shared/glass/liquid_shape.dart';
+import 'package:folio/shared/glass/core/glass_geometry.dart';
+import 'package:folio/shared/glass/core/liquid_shape.dart';
+import 'package:folio/shared/glass/motion/glass_motion_controller.dart';
 
 void main() {
   test('pressed liquid material grows and springs back after release', () {

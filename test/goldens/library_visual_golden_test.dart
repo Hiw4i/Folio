@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
-import 'package:folio/shared/glass/liquid_search_control.dart';
+import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 
 void main() {
   setUpAll(() async {

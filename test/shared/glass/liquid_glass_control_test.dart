@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/shared/glass/liquid_glass_control.dart';
+import 'package:folio/shared/glass/widgets/liquid_glass_control.dart';
 
 void main() {
   testWidgets(
@@ -121,6 +121,125 @@ void main() {
     expect(backgroundTaps, 0);
 
     final gesture = await tester.startGesture(glassCenter);
+    await gesture.moveBy(const Offset(28, 0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(backgroundDrags, 0);
+  });
+
+  testWidgets('passive glass blocks taps and drags from behind it', (
+    tester,
+  ) async {
+    var backgroundTaps = 0;
+    var backgroundDrags = 0;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => backgroundTaps += 1,
+                onPanUpdate: (_) => backgroundDrags += 1,
+              ),
+              const Center(
+                child: LiquidGlassControl(
+                  size: Size(180, 50),
+                  child: SizedBox(
+                    key: ValueKey<String>('passive_spot'),
+                    width: 60,
+                    height: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final spotCenter = tester.getCenter(
+      find.byKey(const ValueKey<String>('passive_spot')),
+    );
+    await tester.tapAt(spotCenter);
+    await tester.pumpAndSettle();
+    expect(backgroundTaps, 0);
+
+    final gesture = await tester.startGesture(spotCenter);
+    await gesture.moveBy(const Offset(28, 0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(backgroundDrags, 0);
+  });
+
+  testWidgets('cluster keeps inner buttons alive, background stays blocked', (
+    tester,
+  ) async {
+    var innerTaps = 0;
+    var backgroundTaps = 0;
+    var backgroundDrags = 0;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => backgroundTaps += 1,
+                onPanUpdate: (_) => backgroundDrags += 1,
+              ),
+              Center(
+                child: LiquidGlassControl(
+                  size: const Size(180, 50),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => innerTaps += 1,
+                        child: const SizedBox(
+                          key: ValueKey<String>('inner_button'),
+                          width: 44,
+                          height: 44,
+                        ),
+                      ),
+                      const SizedBox(
+                        key: ValueKey<String>('inner_gap'),
+                        width: 60,
+                        height: 44,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('inner_button')),
+    );
+    await tester.pumpAndSettle();
+    expect(innerTaps, 1);
+    expect(backgroundTaps, 0);
+
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const ValueKey<String>('inner_gap'))),
+    );
+    await tester.pumpAndSettle();
+    expect(backgroundTaps, 0);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey<String>('inner_gap'))),
+    );
     await gesture.moveBy(const Offset(28, 0));
     await gesture.up();
     await tester.pumpAndSettle();

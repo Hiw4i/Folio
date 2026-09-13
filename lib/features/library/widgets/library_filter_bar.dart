@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import '../../../shared/glass/liquid_segmented_control.dart';
+import '../../../shared/glass/liquid_glass.dart';
 import '../logic/library_controller.dart';
 
 class LibraryFilterBar extends StatelessWidget {

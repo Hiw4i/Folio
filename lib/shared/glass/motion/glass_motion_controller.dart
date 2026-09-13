@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-import 'glass_tokens.dart';
-import 'liquid_motion_controller.dart';
+import '../core/glass_tokens.dart';
+import '../core/liquid_motion_controller.dart';
 
 enum GlassInteractionState { idle, pressed, dragging, opening, open, closing }
 
@@ -32,6 +32,10 @@ class GlassMotionController extends LiquidMotionController {
   Offset _pointerStart = Offset.zero;
   Offset _lastPointer = Offset.zero;
   Duration _lastPointerTime = Duration.zero;
+  // Seconds since the last pointer event. The release-fling velocity is
+  // event-driven (never decays by itself), so the clarity signal gates it by
+  // recency: steady motion reduces blur, a stale fling lets it recover.
+  double _idleAfterPointer = 1e9;
   Offset _dragTarget = Offset.zero;
   Offset _lightTarget = Offset.zero;
 
@@ -82,6 +86,12 @@ class GlassMotionController extends LiquidMotionController {
     if ((lightPosition - _lightTarget).distance > 0.05) {
       return false;
     }
+    // Keep the ticker alive until the backdrop blur is fully restored,
+    // otherwise it would freeze mid-value (visible). The band matches the
+    // snap band, so this gate clears no later than the legacy ones.
+    if ((backdropScale - 1.0).abs() > LiquidBackdropAdapt.settleBand) {
+      return false;
+    }
     return true;
   }
 
@@ -108,6 +118,7 @@ class GlassMotionController extends LiquidMotionController {
     }
     _pointerDown = true;
     _dragExceeded = false;
+    _idleAfterPointer = 0;
     _activeTarget = target;
     _materialTarget = target;
     _pointerStart = position;
@@ -124,6 +135,7 @@ class GlassMotionController extends LiquidMotionController {
 
   void movePointer({required Offset position, required Duration timestamp}) {
     _lightTarget = position;
+    _idleAfterPointer = 0;
     if (!_pointerDown) {
       notifyListeners();
       return;
@@ -317,6 +329,14 @@ class GlassMotionController extends LiquidMotionController {
     displacement = nextDisplacement.$1;
     displacementVelocity = nextDisplacement.$2;
     displacement = LiquidSpring.limitOffset(displacement, _tokens.maxDrag);
+    _idleAfterPointer += dt;
+    trackBackdropBlur(
+      pointerSpeedPx:
+          pointerVelocity.distance * math.exp(-_idleAfterPointer * 7.0) +
+          displacementVelocity.distance * 0.5,
+      morphSpeed: math.max(morphVelocity.abs(), separationVelocity.abs()),
+      dt: dt,
+    );
     lightPosition = Offset.lerp(
       lightPosition,
       _lightTarget,

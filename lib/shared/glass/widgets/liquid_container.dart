@@ -1,14 +1,14 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'glass_geometry.dart';
-import 'glass_motion_controller.dart';
-import 'glass_shell.dart';
+import '../core/glass_geometry.dart';
+import '../core/liquid_shape.dart';
+import '../motion/glass_motion_controller.dart';
+import '../surface/glass_shell.dart';
+import '../surface/liquid_surface.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
 import 'liquid_morphing_control.dart';
-import 'liquid_shape.dart';
-import 'liquid_surface.dart';
 
 /// Universal liquid substance: one widget for every liquid-glass case.
 ///
@@ -273,11 +273,16 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
             press: motion.press,
           );
           final interactive = onTap != null;
+          final transitionOpacity =
+              LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
+          // opaque MUST stay true: with false, MouseRegion reports a miss
+          // upward even when its child was hit, ancestor Stacks keep
+          // descending, and taps/drags leak to content behind the glass.
           return MouseRegion(
             cursor: interactive
                 ? SystemMouseCursors.click
                 : MouseCursor.defer,
-            opaque: false,
+            opaque: true,
             onHover: (event) => motion.updateHover(event.localPosition),
             child: Listener(
               behavior: interactive
@@ -354,18 +359,27 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
                           glowCenter: light,
                           press: motion.press,
                           focused: focus.hasFocus,
+                          blurSigma: motion.backdropBlurSigma,
                         ),
-                        Center(
-                          child: Transform.translate(
-                            offset: contentOffset,
-                            child: Transform.scale(
-                              scale: LiquidContent.scale(motion.press),
-                              child: widget.child,
+                        // Passive/cluster glass has no TouchShield on top (it
+                        // would eat inner buttons in the gesture arena);
+                        // instead a non-competitive wall behind the content
+                        // stops the traversal so nothing behind ever sees
+                        // taps or drags started on the material.
+                        if (!interactive) const GlassHitBlocker(),
+                        Opacity(
+                          opacity: transitionOpacity,
+                          child: Center(
+                            child: Transform.translate(
+                              offset: contentOffset,
+                              child: Transform.scale(
+                                scale: LiquidContent.scale(motion.press),
+                                child: widget.child,
+                              ),
                             ),
                           ),
                         ),
-                        // Single-action glass absorbs behind it; a passive
-                        // cluster must leave inner buttons hittable.
+                        // Single-action glass absorbs behind it on top.
                         if (interactive) const GlassTouchShield(),
                       ],
                     ),

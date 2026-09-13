@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/shared/glass/liquid_segmented_controller.dart';
+import 'package:folio/shared/glass/motion/liquid_segmented_controller.dart';
 
 void main() {
   test('lens stretches in transit and settles on the selected segment', () {
