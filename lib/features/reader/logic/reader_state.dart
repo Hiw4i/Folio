@@ -7,6 +7,7 @@ enum ReaderFailureKind {
   accessDenied,
   unsupportedEncoding,
   unsupportedFormat,
+  passwordRequired,
   unreadable,
 }
 

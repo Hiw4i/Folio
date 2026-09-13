@@ -3,6 +3,7 @@ package com.example.folio
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -10,12 +11,20 @@ import android.os.storage.StorageManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.system.Os
+import android.system.OsConstants
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private companion object {
@@ -28,6 +37,10 @@ class MainActivity : FlutterActivity() {
     private var queuedIncoming: Map<String, Any?>? = null
     private var initialIntentConsumed = false
     private var documentAccessResult: MethodChannel.Result? = null
+    private val pdfSessions = ConcurrentHashMap<String, PdfSourceSession>()
+    private val documentIoExecutor = Executors.newFixedThreadPool(2) { task ->
+        Thread(task, "folio-document-io").apply { isDaemon = true }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -48,6 +61,31 @@ class MainActivity : FlutterActivity() {
                         } else {
                             readContentUri(rawUri, result)
                         }
+                    }
+                    "preparePdfSource" -> {
+                        val rawUri = call.argument<String>("uri")
+                        if (rawUri.isNullOrBlank()) {
+                            result.error("invalid_uri", "The content URI is missing.", null)
+                        } else {
+                            preparePdfSource(rawUri, result)
+                        }
+                    }
+                    "readPdfRange" -> {
+                        val sessionId = call.argument<String>("sessionId")
+                        val position = call.argument<Number>("position")?.toLong()
+                        val size = call.argument<Number>("size")?.toInt()
+                        if (sessionId == null || position == null || size == null) {
+                            result.error("invalid_range", "The PDF range is incomplete.", null)
+                        } else {
+                            readPdfRange(sessionId, position, size, result)
+                        }
+                    }
+                    "closePdfSource" -> {
+                        val sessionId = call.argument<String>("sessionId")
+                        if (sessionId != null) {
+                            pdfSessions.remove(sessionId)?.close()
+                        }
+                        result.success(null)
                     }
                     "consumeInitialDocument" -> {
                         if (initialIntentConsumed) {
@@ -96,6 +134,17 @@ class MainActivity : FlutterActivity() {
                     eventSink = null
                 }
             })
+
+        cleanupStalePdfFiles()
+    }
+
+    override fun onDestroy() {
+        if (!isChangingConfigurations) {
+            pdfSessions.values.forEach { it.close() }
+            pdfSessions.clear()
+            documentIoExecutor.shutdownNow()
+        }
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -157,7 +206,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun readContentUri(rawUri: String, result: MethodChannel.Result) {
-        Thread({
+        documentIoExecutor.execute {
             try {
                 val uri = Uri.parse(rawUri)
                 val bytes = contentResolver.openInputStream(uri)?.use { stream ->
@@ -181,8 +230,142 @@ class MainActivity : FlutterActivity() {
                     result.error("read_failed", "The file could not be read.", null)
                 }
             }
-        }, "folio-document-reader").start()
+        }
     }
+
+    private fun preparePdfSource(rawUri: String, result: MethodChannel.Result) {
+        documentIoExecutor.execute {
+            try {
+                val uri = Uri.parse(rawUri)
+                val asset = contentResolver.openAssetFileDescriptor(uri, "r")
+                    ?: throw FileNotFoundException("The provider returned no file descriptor.")
+                val descriptorLength = when {
+                    asset.length >= 0 -> asset.length
+                    asset.parcelFileDescriptor.statSize >= 0 -> asset.parcelFileDescriptor.statSize
+                    else -> -1L
+                }
+                val seekable = descriptorLength > 0 && runCatching {
+                    Os.lseek(asset.fileDescriptor, asset.startOffset, OsConstants.SEEK_SET)
+                }.isSuccess
+
+                if (seekable) {
+                    val sessionId = UUID.randomUUID().toString()
+                    val stream = FileInputStream(asset.fileDescriptor)
+                    pdfSessions[sessionId] = PdfRangeSession(
+                        asset = asset,
+                        stream = stream,
+                        channel = stream.channel,
+                        startOffset = asset.startOffset,
+                        length = descriptorLength,
+                    )
+                    runOnUiThread {
+                        result.success(
+                            mapOf(
+                                "kind" to "range",
+                                "sessionId" to sessionId,
+                                "length" to descriptorLength,
+                            ),
+                        )
+                    }
+                } else {
+                    asset.close()
+                    val directory = pdfSessionDirectory().apply { mkdirs() }
+                    val sessionId = UUID.randomUUID().toString()
+                    val target = File(directory, "$sessionId.pdf")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        target.outputStream().buffered().use { output -> input.copyTo(output) }
+                    } ?: throw FileNotFoundException("The provider returned no stream.")
+                    if (target.length() <= 0) {
+                        target.delete()
+                        throw FileNotFoundException("The provider returned an empty PDF.")
+                    }
+                    pdfSessions[sessionId] = PdfTemporaryFileSession(target)
+                    runOnUiThread {
+                        result.success(
+                            mapOf(
+                                "kind" to "file",
+                                "sessionId" to sessionId,
+                                "path" to target.absolutePath,
+                                "length" to target.length(),
+                            ),
+                        )
+                    }
+                }
+            } catch (_: SecurityException) {
+                runOnUiThread {
+                    result.error(
+                        "access_denied",
+                        "Folio no longer has permission to read this file.",
+                        null,
+                    )
+                }
+            } catch (_: FileNotFoundException) {
+                runOnUiThread {
+                    result.error("not_found", "The file is no longer available.", null)
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    result.error("prepare_failed", "The PDF source could not be prepared.", null)
+                }
+            }
+        }
+    }
+
+    private fun readPdfRange(
+        sessionId: String,
+        position: Long,
+        requestedSize: Int,
+        result: MethodChannel.Result,
+    ) {
+        documentIoExecutor.execute {
+            val session = pdfSessions[sessionId] as? PdfRangeSession
+            if (session == null) {
+                runOnUiThread {
+                    result.error("not_found", "The PDF session has expired.", null)
+                }
+                return@execute
+            }
+            if (position < 0 || requestedSize < 0 || position > session.length) {
+                runOnUiThread {
+                    result.error("invalid_range", "The requested PDF range is invalid.", null)
+                }
+                return@execute
+            }
+            try {
+                val remaining = (session.length - position).coerceAtLeast(0)
+                val size = minOf(requestedSize.toLong(), remaining).toInt()
+                if (size == 0) {
+                    runOnUiThread { result.success(ByteArray(0)) }
+                    return@execute
+                }
+                val buffer = ByteBuffer.allocate(size)
+                var totalRead = 0
+                while (totalRead < size) {
+                    val count = session.channel.read(
+                        buffer,
+                        session.startOffset + position + totalRead,
+                    )
+                    if (count <= 0) break
+                    totalRead += count
+                }
+                runOnUiThread { result.success(buffer.array().copyOf(totalRead)) }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    result.error("read_failed", "The PDF range could not be read.", null)
+                }
+            }
+        }
+    }
+
+    private fun cleanupStalePdfFiles() {
+        documentIoExecutor.execute {
+            pdfSessionDirectory().listFiles()?.forEach { file ->
+                if (file.isFile) file.delete()
+            }
+        }
+    }
+
+    private fun pdfSessionDirectory() = File(cacheDir, "folio_pdf_sessions")
 
     @Suppress("DEPRECATION")
     private fun streamUri(sourceIntent: Intent): Uri? {
@@ -253,5 +436,29 @@ class MainActivity : FlutterActivity() {
             "mimeType" to contentResolver.getType(uri),
             "persistedPermission" to persisted,
         )
+    }
+
+    private sealed interface PdfSourceSession {
+        fun close()
+    }
+
+    private class PdfRangeSession(
+        val asset: AssetFileDescriptor,
+        val stream: FileInputStream,
+        val channel: FileChannel,
+        val startOffset: Long,
+        val length: Long,
+    ) : PdfSourceSession {
+        override fun close() {
+            runCatching { channel.close() }
+            runCatching { stream.close() }
+            runCatching { asset.close() }
+        }
+    }
+
+    private class PdfTemporaryFileSession(private val file: File) : PdfSourceSession {
+        override fun close() {
+            file.delete()
+        }
     }
 }

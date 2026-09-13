@@ -13,6 +13,7 @@ import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
 import '../logic/document_renderer.dart';
 import '../logic/reader_state.dart';
+import 'pdf_document_view.dart';
 import 'text_document_view.dart';
 
 class ReaderScreen extends StatefulWidget {
@@ -176,6 +177,23 @@ class _ReaderScreenState extends State<ReaderScreen> {
     return false;
   }
 
+  void _handleContentTap() {
+    if (!_chromeVisible) {
+      setState(() => _chromeVisible = true);
+    }
+  }
+
+  void _handlePdfReadingGesture(bool scrollingDown) {
+    if (_searchExpanded) {
+      return;
+    }
+    if (scrollingDown && _chromeVisible) {
+      setState(() => _chromeVisible = false);
+    } else if (!scrollingDown && !_chromeVisible) {
+      setState(() => _chromeVisible = true);
+    }
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -218,11 +236,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             const _ReaderBackground(),
             GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onTap: () {
-                if (!_chromeVisible) {
-                  setState(() => _chromeVisible = true);
-                }
-              },
+              onTap: _handleContentTap,
               child: NotificationListener<ScrollNotification>(
                 onNotification: _onScrollNotification,
                 child: AnimatedBuilder(
@@ -231,6 +245,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     renderer: _renderer,
                     scrollController: _scrollController,
                     activeChunkKey: _activeChunkKey,
+                    onContentTap: _handleContentTap,
+                    onPdfReadingGesture: _handlePdfReadingGesture,
                   ),
                 ),
               ),
@@ -264,6 +280,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         child: _ProgressPill(
                           label: _renderer is TextDocumentRenderer
                               ? '$_progressPercent%'
+                              : _renderer is PdfDocumentRenderer
+                              ? _renderer.positionLabel
                               : widget.document.format.extension.toUpperCase(),
                         ),
                       ),
@@ -389,18 +407,30 @@ class _ReaderBody extends StatelessWidget {
     required this.renderer,
     required this.scrollController,
     required this.activeChunkKey,
+    required this.onContentTap,
+    required this.onPdfReadingGesture,
   });
 
   final DocumentRenderer renderer;
   final ScrollController scrollController;
   final GlobalKey activeChunkKey;
+  final VoidCallback onContentTap;
+  final ValueChanged<bool> onPdfReadingGesture;
 
   @override
   Widget build(BuildContext context) {
     return switch (renderer.loadState) {
+      ReaderLoadState.loading
+          when renderer is PdfDocumentRenderer &&
+              (renderer as PdfDocumentRenderer).sourceReady =>
+        PdfDocumentView(
+          renderer: renderer as PdfDocumentRenderer,
+          onContentTap: onContentTap,
+          onVerticalReadingGesture: onPdfReadingGesture,
+        ),
       ReaderLoadState.loading => const _ReaderStatus(
         title: 'Opening document',
-        message: 'Preparing text for reading…',
+        message: 'Preparing document for reading…',
         loading: true,
       ),
       ReaderLoadState.failed => _ReaderFailureView(
@@ -412,6 +442,12 @@ class _ReaderBody extends StatelessWidget {
           renderer: renderer as TextDocumentRenderer,
           scrollController: scrollController,
           activeChunkKey: activeChunkKey,
+        ),
+      ReaderLoadState.ready when renderer is PdfDocumentRenderer =>
+        PdfDocumentView(
+          renderer: renderer as PdfDocumentRenderer,
+          onContentTap: onContentTap,
+          onVerticalReadingGesture: onPdfReadingGesture,
         ),
       ReaderLoadState.ready => const _ReaderStatus(
         title: 'Nothing to display',
@@ -639,6 +675,9 @@ class _SearchNavigator extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = renderer.isSearching
         ? 'Searching…'
+        : renderer is PdfDocumentRenderer &&
+              (renderer as PdfDocumentRenderer).hasNoSearchableText
+        ? 'No searchable text'
         : renderer.hitCount == 0
         ? 'No matches'
         : '${renderer.activeHitIndex + 1} of ${renderer.hitCount}';
