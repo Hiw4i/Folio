@@ -45,4 +45,20 @@ void main() {
       expect(moving.center, base.center);
     },
   );
+
+  test('foreground inertia follows the material but stays bounded', () {
+    final offset = LiquidShape.contentOffset(
+      displacement: const Offset(300, 180),
+      velocity: const Offset(12000, 9000),
+      press: 1,
+    );
+
+    expect(offset.distance, greaterThan(0));
+    expect(offset.distance, lessThanOrEqualTo(6.501));
+  });
+
+  test('foreground morph lags the liquid material', () {
+    expect(LiquidShape.contentMorph(0.5), lessThan(LiquidShape.visualMorph(0.5)));
+    expect(LiquidShape.contentMorph(1), 1);
+  });
 }

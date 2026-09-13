@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -11,11 +13,19 @@ class LiquidSearchControl extends StatefulWidget {
   const LiquidSearchControl({
     required this.onChanged,
     this.initialQuery = '',
+    this.hintText = 'Search documents',
+    this.semanticsLabel = 'Search',
+    this.onSubmitted,
+    this.onExpansionChanged,
     super.key,
   });
 
   final ValueChanged<String> onChanged;
   final String initialQuery;
+  final String hintText;
+  final String semanticsLabel;
+  final ValueChanged<String>? onSubmitted;
+  final ValueChanged<bool>? onExpansionChanged;
 
   @override
   State<LiquidSearchControl> createState() => LiquidSearchControlState();
@@ -31,14 +41,23 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   final FocusNode _searchFocus = FocusNode(debugLabel: 'Search field');
   final FocusNode _mainFocus = FocusNode(debugLabel: 'Search button');
   final FocusNode _cancelFocus = FocusNode(debugLabel: 'Cancel button');
+  final GlobalKey<EditableTextState> _editableKey =
+      GlobalKey<EditableTextState>(debugLabel: 'Search editable');
+  Timer? _keyboardRetry;
   int? _primaryPointer;
   bool _focusRequested = false;
   bool _reducedMotion = false;
   bool _wasExpanded = false;
+  bool _reportedExpanded = false;
 
   bool get isExpanded => _motion.wantsOpen || _motion.morph > 0.02;
 
-  void open() => _motion.requestOpen();
+  void open() {
+    _motion.requestOpen();
+    if (_motion.state == GlassInteractionState.open) {
+      _requestInputFocus();
+    }
+  }
 
   @override
   void initState() {
@@ -72,10 +91,14 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   }
 
   void _syncFocus() {
-    if (_motion.wantsOpen && _motion.morph > 0.78 && !_focusRequested) {
+    if (_reportedExpanded != _motion.wantsOpen) {
+      _reportedExpanded = _motion.wantsOpen;
+      widget.onExpansionChanged?.call(_reportedExpanded);
+    }
+    if (_motion.wantsOpen && _motion.morph > 0.94 && !_focusRequested) {
       _focusRequested = true;
       _wasExpanded = true;
-      _searchFocus.requestFocus();
+      _requestInputFocus();
     }
     if (!_motion.wantsOpen && _motion.morph < 0.62 && _focusRequested) {
       _focusRequested = false;
@@ -93,22 +116,51 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
     }
   }
 
+  void _requestInputFocus() {
+    if (!_motion.wantsOpen || !mounted) {
+      return;
+    }
+    _searchFocus.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showKeyboardIfReady();
+      _keyboardRetry?.cancel();
+      _keyboardRetry = Timer(
+        const Duration(milliseconds: 110),
+        _showKeyboardIfReady,
+      );
+    });
+  }
+
+  void _showKeyboardIfReady() {
+    if (!mounted || !_motion.wantsOpen || !_searchFocus.hasFocus) {
+      return;
+    }
+    _editableKey.currentState?.requestKeyboard();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
+
   void close() {
     if (_motion.morph > 0.02 || _motion.wantsOpen) {
+      _keyboardRetry?.cancel();
       _motion.requestClose();
     }
   }
 
-  void _handleBack() {
+  bool handleBack() {
     if (_searchFocus.hasFocus) {
       _searchFocus.unfocus();
-      return;
+      return true;
     }
-    close();
+    if (isExpanded) {
+      close();
+      return true;
+    }
+    return false;
   }
 
   @override
   void dispose() {
+    _keyboardRetry?.cancel();
     _motion
       ..removeListener(_syncFocus)
       ..dispose();
@@ -136,7 +188,7 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
               canPop: collapsed,
               onPopInvokedWithResult: (didPop, result) {
                 if (!didPop && !collapsed) {
-                  _handleBack();
+                  handleBack();
                 }
               },
               child: child!,
@@ -175,67 +227,68 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
                     expandedGroupLeft: _tokens.horizontalMargin,
                     centerY: centerY,
                   );
-                  return MouseRegion(
-                    onHover: (event) =>
-                        _motion.updateHover(event.localPosition),
-                    child: Listener(
-                      behavior: HitTestBehavior.translucent,
-                      onPointerDown: (event) {
-                        if (_primaryPointer != null) {
-                          return;
-                        }
-                        final target = frame.hitCancel(event.localPosition)
-                            ? GlassPointerTarget.cancel
-                            : frame.hitMain(event.localPosition)
-                            ? GlassPointerTarget.main
-                            : GlassPointerTarget.none;
-                        if (target == GlassPointerTarget.none) {
-                          return;
-                        }
-                        if (target == GlassPointerTarget.main &&
-                            frame.morph < 0.68) {
-                          _mainFocus.requestFocus();
-                        }
-                        _primaryPointer = event.pointer;
-                        _motion.beginPointer(
+                  return Listener(
+                    behavior: HitTestBehavior.deferToChild,
+                    onPointerDown: (event) {
+                      if (_primaryPointer != null) {
+                        return;
+                      }
+                      final target = frame.hitCancel(event.localPosition)
+                          ? GlassPointerTarget.cancel
+                          : frame.hitMain(event.localPosition)
+                          ? GlassPointerTarget.main
+                          : GlassPointerTarget.none;
+                      if (target == GlassPointerTarget.none) {
+                        return;
+                      }
+                      if (target == GlassPointerTarget.main &&
+                          frame.morph < 0.68) {
+                        _mainFocus.requestFocus();
+                      }
+                      _primaryPointer = event.pointer;
+                      _motion.beginPointer(
+                        position: event.localPosition,
+                        timestamp: event.timeStamp,
+                        target: target,
+                      );
+                    },
+                    onPointerMove: (event) {
+                      if (_primaryPointer == event.pointer) {
+                        _motion.movePointer(
                           position: event.localPosition,
                           timestamp: event.timeStamp,
-                          target: target,
                         );
-                      },
-                      onPointerMove: (event) {
-                        if (_primaryPointer == event.pointer) {
-                          _motion.movePointer(
-                            position: event.localPosition,
-                            timestamp: event.timeStamp,
-                          );
-                        }
-                      },
-                      onPointerUp: (event) {
-                        if (_primaryPointer == event.pointer) {
-                          _motion.endPointer(
-                            position: event.localPosition,
-                            timestamp: event.timeStamp,
-                          );
-                          _primaryPointer = null;
-                        }
-                      },
-                      onPointerCancel: (event) {
-                        if (_primaryPointer == event.pointer) {
-                          _motion.cancelPointer();
-                          _primaryPointer = null;
-                        }
-                      },
-                      child: RepaintBoundary(
-                        child: LiquidSearchMorph(
-                          frame: frame,
-                          motion: _motion,
-                          searchController: _searchController,
-                          searchFocus: _searchFocus,
-                          mainFocus: _mainFocus,
-                          cancelFocus: _cancelFocus,
-                          reducedMotion: _reducedMotion,
-                        ),
+                      }
+                    },
+                    onPointerUp: (event) {
+                      if (_primaryPointer == event.pointer) {
+                        _motion.endPointer(
+                          position: event.localPosition,
+                          timestamp: event.timeStamp,
+                        );
+                        _primaryPointer = null;
+                      }
+                    },
+                    onPointerCancel: (event) {
+                      if (_primaryPointer == event.pointer) {
+                        _motion.cancelPointer();
+                        _primaryPointer = null;
+                      }
+                    },
+                    child: RepaintBoundary(
+                      child: LiquidSearchMorph(
+                        frame: frame,
+                        motion: _motion,
+                        searchController: _searchController,
+                        editableKey: _editableKey,
+                        searchFocus: _searchFocus,
+                        mainFocus: _mainFocus,
+                        cancelFocus: _cancelFocus,
+                        reducedMotion: _reducedMotion,
+                        hintText: widget.hintText,
+                        semanticsLabel: widget.semanticsLabel,
+                        onSubmitted: widget.onSubmitted,
+                        onTapInput: _requestInputFocus,
                       ),
                     ),
                   );

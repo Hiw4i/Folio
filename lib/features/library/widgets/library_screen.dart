@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import '../../../shared/glass/liquid_glass_button.dart';
 import '../../../shared/glass/liquid_search_control.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../reader/data/document_content_source.dart';
+import '../../reader/widgets/reader_screen.dart';
 import '../data/document_entry.dart';
 import '../data/library_repository.dart';
 import '../logic/library_controller.dart';
@@ -14,9 +16,14 @@ import 'library_background.dart';
 import 'library_filter_bar.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({required this.controller, super.key});
+  const LibraryScreen({
+    required this.controller,
+    required this.documentContentSource,
+    super.key,
+  });
 
   final LibraryController controller;
+  final DocumentContentSource documentContentSource;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -25,11 +32,13 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen>
     with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
+  bool _readerOpen = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.controller.addListener(_openPendingDocument);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.controller.load();
     });
@@ -38,8 +47,51 @@ class _LibraryScreenState extends State<LibraryScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.controller.removeListener(_openPendingDocument);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _openPendingDocument() {
+    if (_readerOpen) {
+      return;
+    }
+    final document = widget.controller.takePendingDocument();
+    if (document == null) {
+      return;
+    }
+    _readerOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _readerOpen = false;
+        return;
+      }
+      FocusManager.instance.primaryFocus?.unfocus();
+      await Navigator.of(context).push<void>(
+        PageRouteBuilder<void>(
+          transitionDuration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
+          reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 160),
+          pageBuilder: (context, animation, secondaryAnimation) => ReaderScreen(
+            document: document,
+            contentSource: widget.documentContentSource,
+            onRemoveFromRecents: () =>
+                widget.controller.removeFromRecents(document),
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      _readerOpen = false;
+      _openPendingDocument();
+    });
   }
 
   @override

@@ -235,6 +235,25 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> removeFromRecents(DocumentEntry document) async {
+    await repository.removeFromRecents(document);
+    if (_disposed) {
+      return;
+    }
+    if (document.source is UriDocumentSource || !document.isAvailable) {
+      _documents = _documents.where((item) => item.id != document.id).toList();
+    } else {
+      _documents = <DocumentEntry>[
+        for (final item in _documents)
+          if (item.id == document.id)
+            item.copyWith(lastOpenedAt: null)
+          else
+            item,
+      ];
+    }
+    notifyListeners();
+  }
+
   void _listenForIncomingDocuments() {
     _incomingSubscription ??= repository.incomingDocuments.listen((document) {
       if (_disposed) {

@@ -6,37 +6,57 @@ import 'package:flutter/widgets.dart';
 import 'glass_geometry.dart';
 import 'glass_motion_controller.dart';
 import 'glass_surface.dart';
+import 'glass_touch_shield.dart';
+import 'liquid_shape.dart';
 
 class LiquidSearchMorph extends StatelessWidget {
   const LiquidSearchMorph({
     required this.frame,
     required this.motion,
     required this.searchController,
+    required this.editableKey,
     required this.searchFocus,
     required this.mainFocus,
     required this.cancelFocus,
     required this.reducedMotion,
+    required this.hintText,
+    required this.semanticsLabel,
+    required this.onTapInput,
+    this.onSubmitted,
     super.key,
   });
 
   final GlassGeometryFrame frame;
   final GlassMotionController motion;
   final TextEditingController searchController;
+  final GlobalKey<EditableTextState> editableKey;
   final FocusNode searchFocus;
   final FocusNode mainFocus;
   final FocusNode cancelFocus;
   final bool reducedMotion;
+  final String hintText;
+  final String semanticsLabel;
+  final VoidCallback onTapInput;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
     final contentOpacity = ((frame.morph - 0.52) / 0.30).clamp(0.0, 1.0);
     final cancelOpacity = ((frame.separation - 0.45) / 0.42).clamp(0.0, 1.0);
-    final velocityBlur =
-        motion.morphVelocity.abs() * 0.22 +
-        motion.separationVelocity.abs() * 0.15;
-    final selfBlur = (velocityBlur * (reducedMotion ? 0.32 : 1.0)).clamp(
-      0.0,
-      2.15,
+    final selfBlur = LiquidShape.motionBlurSigma(
+      morphVelocity: motion.morphVelocity,
+      separationVelocity: motion.separationVelocity,
+      reducedMotion: reducedMotion,
+    );
+    final mainContentOffset = LiquidShape.contentOffset(
+      displacement: frame.mainDeformation,
+      velocity: frame.deformationVelocity,
+      press: frame.deformCancel ? 0 : frame.press,
+    );
+    final cancelContentOffset = LiquidShape.contentOffset(
+      displacement: frame.cancelDeformation,
+      velocity: frame.deformationVelocity,
+      press: frame.deformCancel ? frame.press : 0,
     );
 
     Widget soften(Widget child) {
@@ -64,6 +84,15 @@ class LiquidSearchMorph extends StatelessWidget {
               cancelFocus.hasFocus ||
               mainFocus.hasFocus,
         ),
+        Positioned.fromRect(
+          rect: frame.mainRect.inflate(8),
+          child: const GlassTouchShield(),
+        ),
+        if (frame.cancelVisible)
+          Positioned.fromRect(
+            rect: frame.cancelRect.inflate(6),
+            child: const GlassTouchShield(),
+          ),
         Positioned(
           left: frame.iconCenter.dx - 12,
           top: frame.iconCenter.dy - 12,
@@ -71,9 +100,14 @@ class LiquidSearchMorph extends StatelessWidget {
           height: 24,
           child: IgnorePointer(
             child: soften(
-              CustomPaint(
-                painter: _SearchPainter(
-                  opacity: 0.88 + motion.submitEnergy * 0.12,
+              Transform.scale(
+                scale: LiquidShape.contentScale(
+                  frame.deformCancel ? 0 : frame.press,
+                ),
+                child: CustomPaint(
+                  painter: _SearchPainter(
+                    opacity: 0.88 + motion.submitEnergy * 0.12,
+                  ),
                 ),
               ),
             ),
@@ -85,7 +119,7 @@ class LiquidSearchMorph extends StatelessWidget {
             frame.mainRect.center.dy - 19,
             frame.mainRect.right - 18,
             frame.mainRect.center.dy + 19,
-          ),
+          ).shift(mainContentOffset),
           child: IgnorePointer(
             ignoring: frame.morph < 0.76 || !motion.wantsOpen,
             child: MouseRegion(
@@ -93,55 +127,63 @@ class LiquidSearchMorph extends StatelessWidget {
               opaque: false,
               child: ExcludeSemantics(
                 excluding: frame.morph < 0.76 || !motion.wantsOpen,
-                child: soften(
-                  Opacity(
-                    opacity: contentOpacity,
-                    child: Stack(
-                      alignment: Alignment.centerLeft,
-                      children: <Widget>[
-                        ValueListenableBuilder<TextEditingValue>(
-                          valueListenable: searchController,
-                          builder: (context, value, child) {
-                            return Offstage(
-                              offstage: value.text.isNotEmpty,
-                              child: const Text(
-                                'Search documents',
-                                maxLines: 1,
-                                overflow: TextOverflow.fade,
-                                softWrap: false,
-                                style: TextStyle(
-                                  fontFamily: 'Inter',
-                                  color: Color(0x99EDECE8),
-                                  fontSize: 16,
-                                  letterSpacing: 0.1,
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: (_) => onTapInput(),
+                  child: soften(
+                    Opacity(
+                      opacity: contentOpacity,
+                      child: Stack(
+                        alignment: Alignment.centerLeft,
+                        children: <Widget>[
+                          ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: searchController,
+                            builder: (context, value, child) {
+                              return Offstage(
+                                offstage: value.text.isNotEmpty,
+                                child: Text(
+                                  hintText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.fade,
+                                  softWrap: false,
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    color: Color(0x99EDECE8),
+                                    fontSize: 16,
+                                    letterSpacing: 0.1,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                        Semantics(
-                          label: 'Search documents',
-                          textField: true,
-                          child: EditableText(
-                            key: const ValueKey<String>('search_editable'),
-                            controller: searchController,
-                            focusNode: searchFocus,
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              color: Color(0xFFF4F3EF),
-                              fontSize: 16,
-                              height: 1.2,
-                            ),
-                            cursorColor: const Color(0xFFE7C768),
-                            backgroundCursorColor: const Color(0xFF736A4C),
-                            selectionColor: const Color(0x55E7C768),
-                            maxLines: 1,
-                            keyboardType: TextInputType.text,
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (_) => motion.submit(),
+                              );
+                            },
                           ),
-                        ),
-                      ],
+                          Semantics(
+                            key: const ValueKey<String>('search_editable'),
+                            label: semanticsLabel,
+                            textField: true,
+                            child: EditableText(
+                              key: editableKey,
+                              controller: searchController,
+                              focusNode: searchFocus,
+                              style: const TextStyle(
+                                fontFamily: 'Inter',
+                                color: Color(0xFFF4F3EF),
+                                fontSize: 16,
+                                height: 1.2,
+                              ),
+                              cursorColor: const Color(0xFFE7C768),
+                              backgroundCursorColor: const Color(0xFF736A4C),
+                              selectionColor: const Color(0x55E7C768),
+                              maxLines: 1,
+                              keyboardType: TextInputType.text,
+                              textInputAction: TextInputAction.search,
+                              onSubmitted: (value) {
+                                motion.submit();
+                                onSubmitted?.call(value);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -151,21 +193,26 @@ class LiquidSearchMorph extends StatelessWidget {
         ),
         if (frame.cancelVisible)
           Positioned.fromRect(
-            rect: frame.cancelRect,
+            rect: frame.cancelRect.shift(cancelContentOffset),
             child: IgnorePointer(
               child: soften(
                 Opacity(
                   opacity: cancelOpacity,
-                  child: const Center(
-                    child: Text(
-                      'Cancel',
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        color: Color(0xFFF4F3EF),
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.1,
+                  child: Transform.scale(
+                    scale: LiquidShape.contentScale(
+                      frame.deformCancel ? frame.press : 0,
+                    ),
+                    child: const Center(
+                      child: Text(
+                        'Cancel',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          color: Color(0xFFF4F3EF),
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.1,
+                        ),
                       ),
                     ),
                   ),
@@ -181,7 +228,7 @@ class LiquidSearchMorph extends StatelessWidget {
               opaque: false,
               child: Semantics(
                 button: true,
-                label: 'Search',
+                label: semanticsLabel,
                 onTap: () {
                   mainFocus.requestFocus();
                   motion.requestOpen();

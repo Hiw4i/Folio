@@ -140,14 +140,29 @@ class GlassGeometryFrame {
     Offset pull = Offset.zero,
     Offset velocity = Offset.zero,
     double press = 0,
+  }) => deformedRoundedRect(
+    rect: rect,
+    radius: rect.height / 2,
+    origin: origin,
+    pull: pull,
+    velocity: velocity,
+    press: press,
+  );
+
+  static Path deformedRoundedRect({
+    required Rect rect,
+    required double radius,
+    required Offset origin,
+    Offset pull = Offset.zero,
+    Offset velocity = Offset.zero,
+    double press = 0,
   }) {
+    final safeRadius = radius.clamp(0.0, math.min(rect.width, rect.height) / 2);
     if (pull.distanceSquared < 0.0001 && press < 0.001) {
-      return Path()..addRRect(
-        RRect.fromRectAndRadius(rect, Radius.circular(rect.height / 2)),
-      );
+      return Path()
+        ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(safeRadius)));
     }
 
-    final radius = rect.height / 2;
     final points = <Offset>[];
     const arcSteps = 10;
     const lineSteps = 8;
@@ -164,22 +179,38 @@ class GlassGeometryFrame {
     void addArc(Offset center, double startAngle) {
       for (var index = 0; index < arcSteps; index++) {
         final angle = startAngle + index / arcSteps * math.pi / 2;
-        points.add(center + Offset(math.cos(angle), math.sin(angle)) * radius);
+        points.add(
+          center + Offset(math.cos(angle), math.sin(angle)) * safeRadius,
+        );
       }
     }
 
     addLine(
-      Offset(rect.left + radius, rect.top),
-      Offset(rect.right - radius, rect.top),
+      Offset(rect.left + safeRadius, rect.top),
+      Offset(rect.right - safeRadius, rect.top),
     );
-    addArc(Offset(rect.right - radius, rect.top + radius), -math.pi / 2);
-    addArc(Offset(rect.right - radius, rect.bottom - radius), 0);
+    addArc(
+      Offset(rect.right - safeRadius, rect.top + safeRadius),
+      -math.pi / 2,
+    );
     addLine(
-      Offset(rect.right - radius, rect.bottom),
-      Offset(rect.left + radius, rect.bottom),
+      Offset(rect.right, rect.top + safeRadius),
+      Offset(rect.right, rect.bottom - safeRadius),
     );
-    addArc(Offset(rect.left + radius, rect.bottom - radius), math.pi / 2);
-    addArc(Offset(rect.left + radius, rect.top + radius), math.pi);
+    addArc(Offset(rect.right - safeRadius, rect.bottom - safeRadius), 0);
+    addLine(
+      Offset(rect.right - safeRadius, rect.bottom),
+      Offset(rect.left + safeRadius, rect.bottom),
+    );
+    addArc(
+      Offset(rect.left + safeRadius, rect.bottom - safeRadius),
+      math.pi / 2,
+    );
+    addLine(
+      Offset(rect.left, rect.bottom - safeRadius),
+      Offset(rect.left, rect.top + safeRadius),
+    );
+    addArc(Offset(rect.left + safeRadius, rect.top + safeRadius), math.pi);
 
     final sigma = math.max(
       rect.height * 0.82,
@@ -256,9 +287,10 @@ abstract final class GlassGeometry {
     GlassTokens tokens = const GlassTokens(),
   }) {
     final safeMorph = morph.clamp(0.0, 1.06);
-    final visibleMorph = _visualSpringValue(safeMorph);
+    final visibleMorph = LiquidShape.visualMorph(safeMorph);
+    final contentMorph = LiquidShape.contentMorph(safeMorph);
     final safeSeparation = separation.clamp(0.0, 1.05);
-    final visibleSeparation = _visualSpringValue(safeSeparation);
+    final visibleSeparation = LiquidShape.visualMorph(safeSeparation);
     final availableSearchWidth = math.max(
       176.0,
       viewport.width -
@@ -347,12 +379,17 @@ abstract final class GlassGeometry {
     final opticalBounds = combined.inflate(
       tokens.opticalMargin + deformationExtent + 8,
     );
+    final contentOffset = LiquidShape.contentOffset(
+      displacement: mainDeformation,
+      velocity: pointerVelocity,
+      press: deformCancel ? 0 : press,
+    );
     final iconCenter =
         Offset(
-          _lerp(mainRect.center.dx, mainRect.left + 30, visibleMorph),
+          _lerp(mainRect.center.dx, mainRect.left + 30, contentMorph),
           mainRect.center.dy,
         ) +
-        mainDeformation * 0.12;
+        contentOffset;
 
     return GlassGeometryFrame(
       mainRect: mainRect,
@@ -379,18 +416,6 @@ abstract final class GlassGeometry {
       press: press,
       deformCancel: deformCancel,
     );
-  }
-
-  static double _smooth(double value) => value * value * (3 - 2 * value);
-
-  static double _visualSpringValue(double value) {
-    if (value < 0) {
-      return value * 0.24;
-    }
-    if (value > 1) {
-      return 1 + (value - 1) * 0.24;
-    }
-    return _smooth(value);
   }
 
   static double _lerp(double a, double b, double t) => a + (b - a) * t;

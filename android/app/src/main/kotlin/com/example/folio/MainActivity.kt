@@ -15,6 +15,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.io.FileNotFoundException
 
 class MainActivity : FlutterActivity() {
     private companion object {
@@ -40,6 +41,14 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                     "getStorageRoots" -> result.success(storageRoots())
+                    "readContentUri" -> {
+                        val rawUri = call.argument<String>("uri")
+                        if (rawUri.isNullOrBlank()) {
+                            result.error("invalid_uri", "The content URI is missing.", null)
+                        } else {
+                            readContentUri(rawUri, result)
+                        }
+                    }
                     "consumeInitialDocument" -> {
                         if (initialIntentConsumed) {
                             result.success(null)
@@ -145,6 +154,34 @@ class MainActivity : FlutterActivity() {
             else -> null
         } ?: return null
         return documentFromUri(uri, sourceIntent.flags)
+    }
+
+    private fun readContentUri(rawUri: String, result: MethodChannel.Result) {
+        Thread({
+            try {
+                val uri = Uri.parse(rawUri)
+                val bytes = contentResolver.openInputStream(uri)?.use { stream ->
+                    stream.readBytes()
+                } ?: throw FileNotFoundException("The provider returned no stream.")
+                runOnUiThread { result.success(bytes) }
+            } catch (_: SecurityException) {
+                runOnUiThread {
+                    result.error(
+                        "access_denied",
+                        "Folio no longer has permission to read this file.",
+                        null,
+                    )
+                }
+            } catch (_: FileNotFoundException) {
+                runOnUiThread {
+                    result.error("not_found", "The file is no longer available.", null)
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    result.error("read_failed", "The file could not be read.", null)
+                }
+            }
+        }, "folio-document-reader").start()
     }
 
     @Suppress("DEPRECATION")

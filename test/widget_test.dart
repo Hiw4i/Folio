@@ -24,7 +24,9 @@ void main() {
     expect(find.text('Roadmap.pptx'), findsOneWidget);
     expect(find.text('Annual report.pdf'), findsNothing);
 
-    await tester.tap(find.bySemanticsLabel('Search'));
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const ValueKey<String>('search_button_hit'))),
+    );
     await tester.pump(const Duration(milliseconds: 700));
     await tester.enterText(
       find.byKey(const ValueKey<String>('search_editable')),

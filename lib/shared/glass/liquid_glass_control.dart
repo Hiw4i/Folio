@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'glass_button_controller.dart';
 import 'glass_geometry.dart';
 import 'glass_shell.dart';
+import 'glass_touch_shield.dart';
 import 'liquid_shape.dart';
 
 /// Reusable liquid-glass interaction primitive for text, icons and future
@@ -12,17 +13,17 @@ import 'liquid_shape.dart';
 class LiquidGlassControl extends StatefulWidget {
   const LiquidGlassControl({
     required this.child,
-    required this.onTap,
-    required this.semanticsLabel,
     required this.size,
+    this.onTap,
+    this.semanticsLabel,
     this.shapeTokens = const LiquidShapeTokens(),
     this.hitSlop = 8,
     super.key,
   });
 
   final Widget child;
-  final VoidCallback onTap;
-  final String semanticsLabel;
+  final VoidCallback? onTap;
+  final String? semanticsLabel;
   final Size size;
   final LiquidShapeTokens shapeTokens;
   final double hitSlop;
@@ -100,12 +101,19 @@ class _LiquidGlassControlState extends State<LiquidGlassControl>
         final light = _motion.lightPosition == Offset.zero
             ? baseRect.center
             : _motion.lightPosition;
+        final contentOffset = LiquidShape.contentOffset(
+          displacement: _motion.displacement,
+          velocity: _motion.pointerVelocity,
+          press: _motion.press,
+        );
         return MouseRegion(
-          cursor: SystemMouseCursors.click,
+          cursor: widget.onTap == null
+              ? MouseCursor.defer
+              : SystemMouseCursors.click,
           opaque: false,
           onHover: (event) => _motion.updateHover(event.localPosition),
           child: Listener(
-            behavior: HitTestBehavior.translucent,
+            behavior: HitTestBehavior.opaque,
             onPointerDown: (event) {
               if (_pointer != null ||
                   !baseRect
@@ -137,7 +145,7 @@ class _LiquidGlassControlState extends State<LiquidGlassControl>
               _motion.endPointer();
               _pointer = null;
               if (inside) {
-                widget.onTap();
+                widget.onTap?.call();
               }
             },
             onPointerCancel: (event) {
@@ -147,16 +155,18 @@ class _LiquidGlassControlState extends State<LiquidGlassControl>
               }
             },
             child: Semantics(
-              button: true,
+              button: widget.onTap != null,
               label: widget.semanticsLabel,
               onTap: widget.onTap,
               child: Focus(
                 focusNode: _focus,
+                canRequestFocus: widget.onTap != null,
                 onKeyEvent: (node, event) {
-                  if (event is KeyDownEvent &&
+                  if (widget.onTap != null &&
+                      event is KeyDownEvent &&
                       (event.logicalKey == LogicalKeyboardKey.enter ||
                           event.logicalKey == LogicalKeyboardKey.space)) {
-                    widget.onTap();
+                    widget.onTap?.call();
                     return KeyEventResult.handled;
                   }
                   return KeyEventResult.ignored;
@@ -173,11 +183,15 @@ class _LiquidGlassControlState extends State<LiquidGlassControl>
                         focused: _focus.hasFocus,
                       ),
                       Center(
-                        child: Transform.scale(
-                          scale: 1 + _motion.press * 0.012,
-                          child: widget.child,
+                        child: Transform.translate(
+                          offset: contentOffset,
+                          child: Transform.scale(
+                            scale: LiquidShape.contentScale(_motion.press),
+                            child: widget.child,
+                          ),
                         ),
                       ),
+                      const GlassTouchShield(),
                     ],
                   ),
                 ),

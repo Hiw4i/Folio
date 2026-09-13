@@ -75,4 +75,38 @@ void main() {
     expect(pressed.mainRect.width, greaterThan(resting.mainRect.width));
     expect(pressed.mainRect.height, greaterThan(resting.mainRect.height));
   });
+
+  test('search foreground displacement is capped independently', () {
+    final resting = GlassGeometry.resolve(
+      viewport: const Size(400, 200),
+      morph: 0,
+      separation: 0,
+      displacement: Offset.zero,
+    );
+    final dragged = GlassGeometry.resolve(
+      viewport: const Size(400, 200),
+      morph: 0,
+      separation: 0,
+      displacement: const Offset(30, 0),
+      pointerVelocity: const Offset(12000, 0),
+      press: 1,
+    );
+
+    expect(
+      (dragged.iconCenter - resting.iconCenter).distance,
+      lessThanOrEqualTo(8.001),
+    );
+  });
+
+  test('search icon trails the expanding liquid material', () {
+    final frame = GlassGeometry.resolve(
+      viewport: const Size(400, 200),
+      morph: 0.5,
+      separation: 0.5,
+      displacement: Offset.zero,
+    );
+
+    expect(frame.iconCenter.dx, greaterThan(frame.mainRect.left + 30));
+    expect(frame.iconCenter.dx, lessThan(frame.mainRect.center.dx));
+  });
 }
