@@ -2,25 +2,20 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+import 'glass_tokens.dart';
 import 'liquid_motion_controller.dart';
 
+/// Button-press driver tuned to the search reference ([MotionTokens.standard]).
+///
+/// Shares press/return springs, drag gain, max drag and release impulse with
+/// [GlassMotionController] so every liquid surface stretches identically.
 class GlassButtonController extends LiquidMotionController {
-  GlassButtonController({super.vsync});
+  GlassButtonController({super.vsync, MotionTokens? tokens})
+    : _tokens = tokens ?? const MotionTokens.standard();
 
-  static const SpringDescription _pressSpring = SpringDescription(
-    mass: 1,
-    stiffness: 780,
-    damping: 32,
-  );
-  static const SpringDescription _returnSpring = SpringDescription(
-    mass: 0.92,
-    stiffness: 560,
-    damping: 22,
-  );
+  MotionTokens _tokens;
 
   bool _pointerDown = false;
-  double _maxDrag = 14;
-  double _dragGain = 0.34;
   Offset _pointerStart = Offset.zero;
   Offset _lastPointer = Offset.zero;
   Duration _lastPointerTime = Duration.zero;
@@ -37,15 +32,19 @@ class GlassButtonController extends LiquidMotionController {
 
   bool get isPointerDown => _pointerDown;
 
+  MotionTokens get tokens => _tokens;
+
   void setReducedMotion(bool reduced) {
-    final maxDrag = reduced ? 4.0 : 14.0;
-    final dragGain = reduced ? 0.12 : 0.34;
-    if (maxDrag == _maxDrag && dragGain == _dragGain) {
+    final next = reduced
+        ? const MotionTokens.reduced()
+        : const MotionTokens.standard();
+    if (next.maxDrag == _tokens.maxDrag &&
+        next.dragGain == _tokens.dragGain &&
+        next.velocityGain == _tokens.velocityGain) {
       return;
     }
-    _maxDrag = maxDrag;
-    _dragGain = dragGain;
-    displacement = LiquidSpring.limitOffset(displacement, _maxDrag);
+    _tokens = next;
+    displacement = LiquidSpring.limitOffset(displacement, _tokens.maxDrag);
     wake();
     notifyListeners();
   }
@@ -80,8 +79,8 @@ class GlassButtonController extends LiquidMotionController {
     _lastPointer = position;
     _lastPointerTime = timestamp;
     _dragTarget = LiquidSpring.limitOffset(
-      (position - _pointerStart) * _dragGain,
-      _maxDrag,
+      (position - _pointerStart) * _tokens.dragGain,
+      _tokens.maxDrag,
     );
     wake();
     notifyListeners();
@@ -93,7 +92,7 @@ class GlassButtonController extends LiquidMotionController {
     }
     _pointerDown = false;
     _dragTarget = Offset.zero;
-    displacementVelocity += pointerVelocity * 0.11;
+    displacementVelocity += pointerVelocity * _tokens.velocityGain;
     wake();
     notifyListeners();
   }
@@ -139,7 +138,7 @@ class GlassButtonController extends LiquidMotionController {
       position: press,
       velocity: pressVelocity,
       target: _pointerDown ? 1 : 0,
-      spring: _pressSpring,
+      spring: _tokens.press,
       dt: dt,
     );
     press = nextPress.$1;
@@ -148,12 +147,12 @@ class GlassButtonController extends LiquidMotionController {
       position: displacement,
       velocity: displacementVelocity,
       target: _dragTarget,
-      spring: _returnSpring,
+      spring: _tokens.pointerReturn,
       dt: dt,
     );
     displacement = nextDisplacement.$1;
     displacementVelocity = nextDisplacement.$2;
-    displacement = LiquidSpring.limitOffset(displacement, _maxDrag);
+    displacement = LiquidSpring.limitOffset(displacement, _tokens.maxDrag);
     lightPosition = Offset.lerp(
       lightPosition,
       _lightTarget,

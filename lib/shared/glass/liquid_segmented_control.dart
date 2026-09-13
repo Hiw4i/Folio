@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -9,6 +8,7 @@ import 'glass_geometry.dart';
 import 'glass_shell.dart';
 import 'liquid_shape.dart';
 import 'liquid_segmented_controller.dart';
+import 'liquid_surface.dart';
 
 @immutable
 class LiquidSegment<T> {
@@ -39,11 +39,6 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
     with SingleTickerProviderStateMixin {
   static const double _height = 54;
   static const double _lensInset = 4;
-  static final ui.ImageFilter _caseBlur = ui.ImageFilter.blur(
-    sigmaX: 11,
-    sigmaY: 11,
-    tileMode: ui.TileMode.mirror,
-  );
 
   late final LiquidSegmentedController _motion;
   int? _pointer;
@@ -180,31 +175,14 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: <Widget>[
-                      Positioned.fill(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(_height / 2),
-                          child: BackdropFilter(
-                            filter: _caseBlur,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: const Color(0x161A1B1D),
-                                borderRadius: BorderRadius.circular(
-                                  _height / 2,
-                                ),
-                                border: Border.all(
-                                  color: const Color(0x22FFFFFF),
-                                  width: 0.8,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                      const Positioned.fill(child: LiquidCase.track()),
                       _LiquidLens(
                         rect: lensRect,
                         motion: _motion,
                         focused: _focusedIndex != null,
                       ),
+                      // Без motion-blur: лейблы сегментов всегда чёткие, блюрится
+                      // только само стекло (линза/трек) через BackdropFilter.
                       Positioned.fill(
                         child: Row(
                           children: <Widget>[

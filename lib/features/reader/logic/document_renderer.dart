@@ -70,6 +70,9 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   PdfViewerController? _viewerController;
   PdfTextSearcher? _textSearcher;
   int _generation = 0;
+  int _searchRevision = 0;
+  int? _requestedHitIndex;
+  bool _navigationRunning = false;
   bool _disposed = false;
   bool _probingText = false;
 
@@ -107,6 +110,8 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     pageCount = 0;
     searchableTextAvailable = null;
     query = '';
+    _searchRevision += 1;
+    _requestedHitIndex = null;
     isSearching = false;
     activeHitIndex = -1;
     notifyListeners();
@@ -238,11 +243,20 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
       return;
     }
     isSearching = searcher.isSearching;
-    activeHitIndex = searcher.currentIndex ?? -1;
+    final currentIndex = searcher.currentIndex;
+    activeHitIndex = currentIndex ?? activeHitIndex;
+    int? firstHitToReveal;
     if (searcher.matches.isNotEmpty) {
       searchableTextAvailable = true;
+      if (currentIndex == null && activeHitIndex < 0) {
+        activeHitIndex = 0;
+        firstHitToReveal = 0;
+      }
     }
     notifyListeners();
+    if (firstHitToReveal != null) {
+      _requestPdfHit(firstHitToReveal, _searchRevision);
+    }
     if (!searcher.isSearching &&
         query.trim().isNotEmpty &&
         searcher.matches.isEmpty &&
@@ -285,6 +299,8 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
 
   @override
   Future<void> search(String value) async {
+    _searchRevision += 1;
+    _requestedHitIndex = null;
     query = value;
     searchableTextAvailable = value.trim().isEmpty
         ? null
@@ -309,7 +325,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     _textSearcher!.startTextSearch(
       query.trim(),
       caseInsensitive: true,
-      goToFirstMatch: true,
+      goToFirstMatch: false,
       searchImmediately: true,
     );
     notifyListeners();
@@ -321,8 +337,9 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     if (searcher == null || searcher.matches.isEmpty) {
       return;
     }
-    final next = ((searcher.currentIndex ?? -1) + 1) % searcher.matches.length;
-    unawaited(searcher.goToMatchOfIndex(next));
+    final current = activeHitIndex < 0 ? -1 : activeHitIndex;
+    final next = (current + 1) % searcher.matches.length;
+    _requestPdfHit(next, _searchRevision);
   }
 
   @override
@@ -331,10 +348,72 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     if (searcher == null || searcher.matches.isEmpty) {
       return;
     }
-    final current = searcher.currentIndex ?? 0;
+    final current = activeHitIndex < 0 ? 0 : activeHitIndex;
     final previous =
         (current - 1 + searcher.matches.length) % searcher.matches.length;
-    unawaited(searcher.goToMatchOfIndex(previous));
+    _requestPdfHit(previous, _searchRevision);
+  }
+
+  void _requestPdfHit(int index, int searchRevision) {
+    final searcher = _textSearcher;
+    if (searcher == null ||
+        index < 0 ||
+        index >= searcher.matches.length ||
+        searchRevision != _searchRevision) {
+      return;
+    }
+    activeHitIndex = index;
+    _requestedHitIndex = index;
+    notifyListeners();
+    if (!_navigationRunning) {
+      unawaited(_drainPdfNavigation(searcher, searchRevision));
+    }
+  }
+
+  Future<void> _drainPdfNavigation(
+    PdfTextSearcher searcher,
+    int searchRevision,
+  ) async {
+    _navigationRunning = true;
+    while (!_disposed &&
+        searchRevision == _searchRevision &&
+        identical(searcher, _textSearcher)) {
+      final index = _requestedHitIndex;
+      _requestedHitIndex = null;
+      if (index == null || index < 0 || index >= searcher.matches.length) {
+        break;
+      }
+      try {
+        await searcher.goToMatchOfIndex(index);
+      } catch (_) {
+        // A disposed viewer or superseded search can cancel ensureVisible.
+      }
+      if (_requestedHitIndex == null &&
+          !_disposed &&
+          searchRevision == _searchRevision &&
+          identical(searcher, _textSearcher)) {
+        final visiblePage = _viewerController?.pageNumber;
+        if (visiblePage != null && pageCount > 0) {
+          currentPage = visiblePage.clamp(1, pageCount);
+        }
+        notifyListeners();
+      }
+    }
+    _navigationRunning = false;
+    final currentSearcher = _textSearcher;
+    if (_requestedHitIndex != null && !_disposed && currentSearcher != null) {
+      unawaited(_drainPdfNavigation(currentSearcher, _searchRevision));
+    }
+  }
+
+  void _cancelPdfNavigation() {
+    _requestedHitIndex = null;
+    if (!_navigationRunning) {
+      return;
+    }
+    // The running ensureVisible call cannot be cancelled by pdfrx. Advancing
+    // the search revision makes its completion inert.
+    _searchRevision += 1;
   }
 
   void _setReadFailure(DocumentReadException error) {
@@ -363,6 +442,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   }
 
   void _detachViewer() {
+    _cancelPdfNavigation();
     _viewerController = null;
     _textSearcher
       ?..removeListener(_searchChanged)
@@ -516,6 +596,8 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
       return;
     }
 
+    _hits = const <ReaderSearchHit>[];
+    activeHitIndex = -1;
     isSearching = true;
     notifyListeners();
     final rawHits = await Isolate.run<List<List<int>>>(() {

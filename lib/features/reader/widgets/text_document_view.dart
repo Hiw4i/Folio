@@ -1,8 +1,11 @@
 import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
+import 'package:flutter/material.dart' show SelectionArea;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as markdown;
+import 'package:scroll_to_index/scroll_to_index.dart';
 
+import '../../../shared/selection/folio_selection_toolbar.dart';
 import '../../../shared/theme/folio_theme.dart';
 import '../data/text_document.dart';
 import '../logic/document_renderer.dart';
@@ -17,13 +20,13 @@ class TextDocumentView extends StatelessWidget {
   const TextDocumentView({
     required this.renderer,
     required this.scrollController,
-    required this.activeChunkKey,
+    required this.activeHitKey,
     super.key,
   });
 
   final TextDocumentRenderer renderer;
-  final ScrollController scrollController;
-  final GlobalKey activeChunkKey;
+  final AutoScrollController scrollController;
+  final GlobalKey activeHitKey;
 
   @override
   Widget build(BuildContext context) {
@@ -52,23 +55,33 @@ class TextDocumentView extends StatelessWidget {
         itemBuilder: (context, index) {
           final chunk = content.chunks[index];
           final hits = renderer.hitsForChunk(index);
-          return Center(
-            key: index == activeChunk ? activeChunkKey : null,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: content.isMarkdown
-                    ? _MarkdownChunk(
-                        chunk: chunk,
-                        hits: hits,
-                        activeHit: renderer.activeHit,
-                      )
-                    : _PlainTextChunk(
-                        chunk: chunk,
-                        hits: hits,
-                        activeHit: renderer.activeHit,
-                      ),
+          return AutoScrollTag(
+            key: ValueKey<String>('reader_text_chunk_$index'),
+            controller: scrollController,
+            index: index,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: content.isMarkdown
+                      ? _MarkdownChunk(
+                          chunk: chunk,
+                          hits: hits,
+                          activeHit: renderer.activeHit,
+                          activeHitKey: index == activeChunk
+                              ? activeHitKey
+                              : null,
+                        )
+                      : _PlainTextChunk(
+                          chunk: chunk,
+                          hits: hits,
+                          activeHit: renderer.activeHit,
+                          activeHitKey: index == activeChunk
+                              ? activeHitKey
+                              : null,
+                        ),
+                ),
               ),
             ),
           );
@@ -83,11 +96,13 @@ class _PlainTextChunk extends StatelessWidget {
     required this.chunk,
     required this.hits,
     required this.activeHit,
+    required this.activeHitKey,
   });
 
   final TextDocumentChunk chunk;
   final List<ReaderSearchHit> hits;
   final ReaderSearchHit? activeHit;
+  final GlobalKey? activeHitKey;
 
   @override
   Widget build(BuildContext context) {
@@ -99,12 +114,16 @@ class _PlainTextChunk extends StatelessWidget {
       fontWeight: FontWeight.w400,
       letterSpacing: -0.05,
     );
-    return Text.rich(
-      TextSpan(
-        style: baseStyle,
-        children: _highlightedSpans(chunk, hits, activeHit, baseStyle),
+    return SelectionArea(
+      contextMenuBuilder: folioSelectionAreaContextMenuBuilder,
+      child: Text.rich(
+        TextSpan(
+          style: baseStyle,
+          children: _highlightedSpans(chunk, hits, activeHit, baseStyle),
+        ),
+        key: activeHit == null ? null : activeHitKey,
+        textAlign: TextAlign.start,
       ),
-      textAlign: TextAlign.start,
     );
   }
 }
@@ -161,18 +180,21 @@ class _MarkdownChunk extends StatelessWidget {
     required this.chunk,
     required this.hits,
     required this.activeHit,
+    required this.activeHitKey,
   });
 
   final TextDocumentChunk chunk;
   final List<ReaderSearchHit> hits;
   final ReaderSearchHit? activeHit;
+  final GlobalKey? activeHitKey;
 
   @override
   Widget build(BuildContext context) {
     return MarkdownBody(
       data:
           '${chunk.renderPrefix}${_markedSource(chunk, hits, activeHit)}${chunk.renderSuffix}',
-      selectable: false,
+      selectable: true,
+      contextMenuBuilder: folioEditableTextContextMenuBuilder,
       softLineBreak: true,
       onTapLink: (text, href, title) {},
       imageBuilder: (uri, title, alt) => _BlockedImage(label: alt),
@@ -190,7 +212,10 @@ class _MarkdownChunk extends StatelessWidget {
       ],
       builders: <String, MarkdownElementBuilder>{
         'folio-search-hit': _SearchHitBuilder(active: false),
-        'folio-search-hit-active': _SearchHitBuilder(active: true),
+        'folio-search-hit-active': _SearchHitBuilder(
+          active: true,
+          targetKey: activeHitKey,
+        ),
       },
       styleSheet: _markdownStyleSheet(),
     );
@@ -240,9 +265,10 @@ class _SearchHitSyntax extends markdown.InlineSyntax {
 }
 
 class _SearchHitBuilder extends MarkdownElementBuilder {
-  _SearchHitBuilder({required this.active});
+  _SearchHitBuilder({required this.active, this.targetKey});
 
   final bool active;
+  final GlobalKey? targetKey;
 
   @override
   Widget? visitElementAfterWithContext(
@@ -252,6 +278,7 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
     TextStyle? parentStyle,
   ) {
     return DecoratedBox(
+      key: active ? targetKey : null,
       decoration: BoxDecoration(
         color: active ? FolioColors.warmAccent : const Color(0x3DE7C768),
         borderRadius: BorderRadius.circular(3),

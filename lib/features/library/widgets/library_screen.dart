@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../../shared/glass/glass_panel.dart';
 import '../../../shared/glass/liquid_glass_button.dart';
 import '../../../shared/glass/liquid_search_control.dart';
 import '../../../shared/theme/folio_theme.dart';
@@ -428,18 +429,13 @@ class _UnavailableRecovery extends StatelessWidget {
             Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 380),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 24),
-                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xF21B1B1D),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(
-                      color: const Color(0x2FFFFFFF),
-                      width: 0.8,
-                    ),
-                  ),
-                  child: Column(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  // Та же статичная liquid-панель, что и в ридере.
+                  child: GlassPanel(
+                    borderRadius: 28,
+                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 12),
+                    child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       const Text(
@@ -481,6 +477,7 @@ class _UnavailableRecovery extends StatelessWidget {
                         ),
                       ),
                     ],
+                    ),
                   ),
                 ),
               ),

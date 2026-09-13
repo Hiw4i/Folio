@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../../shared/glass/glass_panel.dart';
 import '../../../shared/glass/liquid_glass_button.dart';
@@ -33,21 +34,27 @@ class ReaderScreen extends StatefulWidget {
 }
 
 class _ReaderScreenState extends State<ReaderScreen> {
-  final ScrollController _scrollController = ScrollController();
+  final AutoScrollController _scrollController = AutoScrollController(
+    axis: Axis.vertical,
+    suggestedRowHeight: 3200,
+  );
   final GlobalKey<LiquidSearchControlState> _searchKey =
       GlobalKey<LiquidSearchControlState>();
   final GlobalKey<LiquidMorphingControlState> _menuKey =
       GlobalKey<LiquidMorphingControlState>();
-  GlobalKey _activeChunkKey = GlobalKey();
+  GlobalKey _activeHitKey = GlobalKey();
   late final DocumentRenderer _renderer;
   Timer? _searchDebounce;
-  Timer? _revealTimer;
+  int _revealGeneration = 0;
   bool _chromeVisible = true;
   bool _searchExpanded = false;
   bool _menuOpen = false;
   bool _infoOpen = false;
   int _lastActiveHit = -2;
   int _progressPercent = 0;
+  int? _contentPointer;
+  Offset? _contentPointerOrigin;
+  bool _contentPointerMoved = false;
 
   @override
   void initState() {
@@ -65,9 +72,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
       return;
     }
     _lastActiveHit = _renderer.activeHitIndex;
-    _activeChunkKey = GlobalKey();
+    final generation = ++_revealGeneration;
+    _activeHitKey = GlobalKey(
+      debugLabel: 'reader active search hit ${_renderer.activeHitIndex}',
+    );
     if (_renderer.activeHit != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _revealActiveHit());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_revealActiveHit(generation));
+      });
     }
   }
 
@@ -84,7 +96,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  void _revealActiveHit() {
+  Future<void> _revealActiveHit(int generation) async {
     if (!mounted || !_scrollController.hasClients) {
       return;
     }
@@ -96,37 +108,88 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (content == null || content.chunks.isEmpty) {
       return;
     }
-    final chunkIndex = renderer.activeHit!.chunkIndex;
-    final target =
-        _scrollController.position.maxScrollExtent *
-        (chunkIndex / content.chunks.length);
+    final hit = renderer.activeHit!;
+    final chunkIndex = hit.chunkIndex;
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    unawaited(
-      _scrollController.animateTo(
-        target.clamp(0, _scrollController.position.maxScrollExtent),
-        duration: reducedMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 280),
+    if (_activeHitKey.currentContext == null) {
+      try {
+        await _scrollController.scrollToIndex(
+          chunkIndex,
+          preferPosition: AutoScrollPosition.begin,
+          duration: reducedMotion
+              ? const Duration(milliseconds: 1)
+              : const Duration(milliseconds: 220),
+        );
+      } catch (_) {
+        return;
+      }
+    }
+    if (!mounted || generation != _revealGeneration) {
+      return;
+    }
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || generation != _revealGeneration) {
+      return;
+    }
+
+    final targetContext = _activeHitKey.currentContext;
+    final targetObject = targetContext?.findRenderObject();
+    if (targetContext == null ||
+        !targetContext.mounted ||
+        targetObject == null ||
+        !targetObject.attached) {
+      return;
+    }
+    final paragraph = content.isMarkdown
+        ? null
+        : _findRenderParagraph(targetObject);
+    final revealObject = paragraph ?? targetObject;
+    final viewport = RenderAbstractViewport.maybeOf(revealObject);
+    if (viewport == null) {
+      return;
+    }
+    final position = _scrollController.position;
+    var targetOffset = viewport.getOffsetToReveal(revealObject, 0.28).offset;
+    if (paragraph != null) {
+      final chunk = content.chunks[chunkIndex];
+      final localStart = (hit.startOffset - chunk.startOffset).clamp(
+        0,
+        chunk.text.length,
+      );
+      final localEnd = (hit.endOffset - chunk.startOffset).clamp(
+        localStart,
+        chunk.text.length,
+      );
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: localStart, extentOffset: localEnd),
+      );
+      if (boxes.isNotEmpty) {
+        targetOffset =
+            viewport.getOffsetToReveal(paragraph, 0).offset +
+            boxes.first.top -
+            position.viewportDimension * 0.28;
+      }
+    }
+    targetOffset = targetOffset.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((position.pixels - targetOffset).abs() < 1) {
+      return;
+    }
+    if (reducedMotion) {
+      _scrollController.jumpTo(targetOffset);
+      return;
+    }
+    try {
+      await _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-      ),
-    );
-    _revealTimer?.cancel();
-    _revealTimer = Timer(
-      reducedMotion ? Duration.zero : const Duration(milliseconds: 300),
-      () {
-        final targetContext = _activeChunkKey.currentContext;
-        if (mounted && targetContext != null && targetContext.mounted) {
-          Scrollable.ensureVisible(
-            targetContext,
-            alignment: 0.28,
-            duration: reducedMotion
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-          );
-        }
-      },
-    );
+      );
+    } catch (_) {
+      // A newer search result or route disposal can cancel this animation.
+    }
   }
 
   void _searchChanged(String query) {
@@ -183,6 +246,49 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  void _contentPointerDown(PointerDownEvent event) {
+    if (_contentPointer != null) {
+      _contentPointerMoved = true;
+      return;
+    }
+    _contentPointer = event.pointer;
+    _contentPointerOrigin = event.position;
+    _contentPointerMoved = false;
+  }
+
+  void _contentPointerMove(PointerMoveEvent event) {
+    if (event.pointer != _contentPointer) {
+      return;
+    }
+    final origin = _contentPointerOrigin;
+    if (origin != null && (event.position - origin).distance > 10) {
+      _contentPointerMoved = true;
+    }
+  }
+
+  void _contentPointerUp(PointerUpEvent event) {
+    if (event.pointer != _contentPointer) {
+      return;
+    }
+    final isTap = !_contentPointerMoved;
+    _clearContentPointer();
+    if (isTap) {
+      _handleContentTap();
+    }
+  }
+
+  void _contentPointerCancel(PointerCancelEvent event) {
+    if (event.pointer == _contentPointer) {
+      _clearContentPointer();
+    }
+  }
+
+  void _clearContentPointer() {
+    _contentPointer = null;
+    _contentPointerOrigin = null;
+    _contentPointerMoved = false;
+  }
+
   void _handlePdfReadingGesture(bool scrollingDown) {
     if (_searchExpanded) {
       return;
@@ -197,7 +303,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    _revealTimer?.cancel();
+    _revealGeneration += 1;
     _renderer
       ..removeListener(_rendererChanged)
       ..close()
@@ -234,9 +340,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
           fit: StackFit.expand,
           children: <Widget>[
             const _ReaderBackground(),
-            GestureDetector(
+            Listener(
               behavior: HitTestBehavior.translucent,
-              onTap: _handleContentTap,
+              onPointerDown: _contentPointerDown,
+              onPointerMove: _contentPointerMove,
+              onPointerUp: _contentPointerUp,
+              onPointerCancel: _contentPointerCancel,
               child: NotificationListener<ScrollNotification>(
                 onNotification: _onScrollNotification,
                 child: AnimatedBuilder(
@@ -244,7 +353,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   builder: (context, child) => _ReaderBody(
                     renderer: _renderer,
                     scrollController: _scrollController,
-                    activeChunkKey: _activeChunkKey,
+                    activeHitKey: _activeHitKey,
                     onContentTap: _handleContentTap,
                     onPdfReadingGesture: _handlePdfReadingGesture,
                   ),
@@ -285,15 +394,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               : widget.document.format.extension.toUpperCase(),
                         ),
                       ),
-                      if (_renderer.query.trim().isNotEmpty)
-                        Positioned(
-                          right: 20,
-                          bottom:
-                              media.viewInsets.bottom +
-                              media.viewPadding.bottom +
-                              102,
-                          child: _SearchNavigator(renderer: _renderer),
-                        ),
                     ],
                   );
                 },
@@ -390,6 +490,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 },
               ),
             ),
+            _AnimatedChrome(
+              visible: showChrome && !_menuOpen && !_infoOpen,
+              duration: chromeDuration,
+              hiddenOffset: const Offset(0, 1.25),
+              child: AnimatedBuilder(
+                animation: _renderer,
+                builder: (context, child) {
+                  if (_renderer.query.trim().isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned(
+                    right: 20,
+                    bottom:
+                        media.viewInsets.bottom +
+                        media.viewPadding.bottom +
+                        102,
+                    child: _SearchNavigator(renderer: _renderer),
+                  );
+                },
+              ),
+            ),
             if (_infoOpen)
               _FileInfoOverlay(
                 document: widget.document,
@@ -402,18 +523,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 }
 
+RenderParagraph? _findRenderParagraph(RenderObject root) {
+  if (root is RenderParagraph) {
+    return root;
+  }
+  RenderParagraph? result;
+  root.visitChildren((child) {
+    result ??= _findRenderParagraph(child);
+  });
+  return result;
+}
+
 class _ReaderBody extends StatelessWidget {
   const _ReaderBody({
     required this.renderer,
     required this.scrollController,
-    required this.activeChunkKey,
+    required this.activeHitKey,
     required this.onContentTap,
     required this.onPdfReadingGesture,
   });
 
   final DocumentRenderer renderer;
-  final ScrollController scrollController;
-  final GlobalKey activeChunkKey;
+  final AutoScrollController scrollController;
+  final GlobalKey activeHitKey;
   final VoidCallback onContentTap;
   final ValueChanged<bool> onPdfReadingGesture;
 
@@ -441,7 +573,7 @@ class _ReaderBody extends StatelessWidget {
         TextDocumentView(
           renderer: renderer as TextDocumentRenderer,
           scrollController: scrollController,
-          activeChunkKey: activeChunkKey,
+          activeHitKey: activeHitKey,
         ),
       ReaderLoadState.ready when renderer is PdfDocumentRenderer =>
         PdfDocumentView(
@@ -621,21 +753,14 @@ class _LiquidChromeObject extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox.fromSize(
+    // Единый liquid-примитив (сам ослабляет tight-ограничения внутренним
+    // OverflowBox: оптическая оболочка выступает за [size] без клиппинга).
+    return LiquidGlassControl(
       size: size,
-      child: OverflowBox(
-        minWidth: size.width + 80,
-        maxWidth: size.width + 80,
-        minHeight: size.height + 80,
-        maxHeight: size.height + 80,
-        child: LiquidGlassControl(
-          semanticsLabel: semanticsLabel,
-          size: size,
-          hitSlop: 0,
-          onTap: onTap,
-          child: child,
-        ),
-      ),
+      semanticsLabel: semanticsLabel,
+      hitSlop: 0,
+      onTap: onTap,
+      child: child,
     );
   }
 }
@@ -673,14 +798,15 @@ class _SearchNavigator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = renderer.isSearching
+    final currentRenderer = renderer;
+    final label = currentRenderer.isSearching
         ? 'Searching…'
-        : renderer is PdfDocumentRenderer &&
-              (renderer as PdfDocumentRenderer).hasNoSearchableText
+        : currentRenderer is PdfDocumentRenderer &&
+              currentRenderer.hasNoSearchableText
         ? 'No searchable text'
-        : renderer.hitCount == 0
+        : currentRenderer.hitCount == 0
         ? 'No matches'
-        : '${renderer.activeHitIndex + 1} of ${renderer.hitCount}';
+        : '${currentRenderer.activeHitIndex + 1} of ${currentRenderer.hitCount}';
     return GlassPanel(
       borderRadius: 23,
       padding: const EdgeInsets.only(left: 15, right: 4),
@@ -704,15 +830,15 @@ class _SearchNavigator extends StatelessWidget {
               key: const ValueKey<String>('reader_previous_hit'),
               label: 'Previous match',
               symbol: '↑',
-              enabled: renderer.hitCount > 0,
-              onTap: renderer.showPreviousHit,
+              enabled: currentRenderer.hitCount > 0,
+              onTap: currentRenderer.showPreviousHit,
             ),
             _SearchStepButton(
               key: const ValueKey<String>('reader_next_hit'),
               label: 'Next match',
               symbol: '↓',
-              enabled: renderer.hitCount > 0,
-              onTap: renderer.showNextHit,
+              enabled: currentRenderer.hitCount > 0,
+              onTap: currentRenderer.showNextHit,
             ),
           ],
         ),
@@ -737,26 +863,24 @@ class _SearchStepButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? onTap : null,
-        child: SizedBox(
-          width: 40,
-          height: 46,
-          child: Center(
-            child: Text(
-              symbol,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                color: enabled
-                    ? FolioColors.textPrimary
-                    : FolioColors.textTertiary,
-                fontSize: 18,
-              ),
+    return SizedBox(
+      width: 40,
+      height: 46,
+      child: Center(
+        child: _LiquidChromeObject(
+          size: const Size(32, 32),
+          semanticsLabel: label,
+          onTap: enabled ? onTap : null,
+          child: Text(
+            symbol,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              color: enabled
+                  ? FolioColors.textPrimary
+                  : FolioColors.textTertiary,
+              fontSize: 16,
+              height: 1,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),

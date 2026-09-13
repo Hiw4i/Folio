@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
-import 'glass_tokens.dart';
+import 'liquid_surface.dart';
 
 class GlassShell extends StatelessWidget {
   const GlassShell({
@@ -18,11 +18,7 @@ class GlassShell extends StatelessWidget {
   final double press;
   final bool focused;
 
-  static final ui.ImageFilter backdropBlur = ui.ImageFilter.blur(
-    sigmaX: const GlassTokens().blurSigma,
-    sigmaY: const GlassTokens().blurSigma,
-    tileMode: ui.TileMode.mirror,
-  );
+  static ui.ImageFilter get backdropBlur => LiquidBlur.filter;
 
   @override
   Widget build(BuildContext context) {

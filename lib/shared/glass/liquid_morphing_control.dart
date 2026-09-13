@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -7,6 +5,7 @@ import 'glass_geometry.dart';
 import 'glass_motion_controller.dart';
 import 'glass_shell.dart';
 import 'glass_touch_shield.dart';
+import 'liquid_content.dart';
 import 'liquid_shape.dart';
 
 @immutable
@@ -183,25 +182,14 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
               0.0,
               1.0,
             );
-            final selfBlur = LiquidShape.motionBlurSigma(
+            final selfBlur = LiquidContent.blurSigma(
               morphVelocity: _motion.morphVelocity,
               separationVelocity: _motion.separationVelocity,
               reducedMotion: MediaQuery.disableAnimationsOf(context),
             );
 
-            Widget soften(Widget value) {
-              if (selfBlur < 0.01) {
-                return value;
-              }
-              return ImageFiltered(
-                imageFilter: ui.ImageFilter.blur(
-                  sigmaX: selfBlur,
-                  sigmaY: selfBlur,
-                  tileMode: ui.TileMode.decal,
-                ),
-                child: value,
-              );
-            }
+            Widget soften(Widget value) =>
+                LiquidContent.soften(child: value, sigma: selfBlur);
 
             return Listener(
               behavior: HitTestBehavior.deferToChild,

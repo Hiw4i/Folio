@@ -1,8 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart'
+    show
+        ContextMenuButtonItem,
+        ContextMenuButtonType,
+        DefaultMaterialLocalizations,
+        TextSelectionToolbarAnchors;
 import 'package:flutter/widgets.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+import '../../../shared/selection/folio_selection_toolbar.dart';
 import '../../../shared/theme/folio_theme.dart';
 import '../logic/document_renderer.dart';
 
@@ -28,6 +35,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   final PdfViewerController _controller = PdfViewerController();
   late final PdfViewerParams _params;
   double _verticalGestureTravel = 0;
+  bool _selectingText = false;
 
   @override
   void initState() {
@@ -46,6 +54,13 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       horizontalCacheExtent: 0.35,
       verticalCacheExtent: 0.85,
       onePassRenderingSizeThreshold: 2400,
+      textSelectionParams: PdfTextSelectionParams(
+        enabled: true,
+        enableSelectionHandles: true,
+        showContextMenuAutomatically: true,
+        onTextSelectionChange: _textSelectionChanged,
+      ),
+      buildContextMenu: _buildContextMenu,
       scrollPhysics: const BouncingScrollPhysics(
         decelerationRate: ScrollDecelerationRate.fast,
       ),
@@ -91,7 +106,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   }
 
   void _interactionUpdated(ScaleUpdateDetails details) {
-    if ((details.scale - 1).abs() > 0.015) {
+    if (_selectingText || (details.scale - 1).abs() > 0.015) {
       return;
     }
     _verticalGestureTravel += details.focalPointDelta.dy;
@@ -99,6 +114,39 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       widget.onVerticalReadingGesture(_verticalGestureTravel < 0);
       _verticalGestureTravel = 0;
     }
+  }
+
+  void _textSelectionChanged(PdfTextSelection selection) {
+    _selectingText = selection.hasSelectedText;
+  }
+
+  Widget? _buildContextMenu(
+    BuildContext context,
+    PdfViewerContextMenuBuilderParams params,
+  ) {
+    final items = <ContextMenuButtonItem>[
+      if (params.isTextSelectionEnabled &&
+          params.textSelectionDelegate.isCopyAllowed &&
+          params.textSelectionDelegate.hasSelectedText)
+        ContextMenuButtonItem(
+          onPressed: params.textSelectionDelegate.copyTextSelection,
+          type: ContextMenuButtonType.copy,
+        ),
+      if (params.isTextSelectionEnabled &&
+          !params.textSelectionDelegate.isSelectingAllText)
+        ContextMenuButtonItem(
+          onPressed: params.textSelectionDelegate.selectAllText,
+          type: ContextMenuButtonType.selectAll,
+        ),
+    ];
+    if (items.isEmpty) {
+      return null;
+    }
+    return PdfSelectionContextMenu(
+      primaryAnchor: params.anchorA,
+      secondaryAnchor: params.anchorB,
+      buttonItems: items,
+    );
   }
 
   bool _generalTap(
@@ -128,6 +176,43 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     return RepaintBoundary(
       key: const ValueKey<String>('pdf_document_view'),
       child: PdfViewer(documentRef, controller: _controller, params: _params),
+    );
+  }
+}
+
+/// Keeps the PDF selection overlay self-contained. pdfrx builds this widget
+/// inside the viewer overlay, which is not guaranteed to retain the app-level
+/// Material localizations on every Android composition path.
+class PdfSelectionContextMenu extends StatelessWidget {
+  const PdfSelectionContextMenu({
+    required this.primaryAnchor,
+    required this.buttonItems,
+    this.secondaryAnchor,
+    super.key,
+  });
+
+  final Offset primaryAnchor;
+  final Offset? secondaryAnchor;
+  final List<ContextMenuButtonItem> buttonItems;
+
+  @override
+  Widget build(BuildContext context) {
+    return Localizations.override(
+      context: context,
+      locale: const Locale('en'),
+      delegates: const <LocalizationsDelegate<dynamic>>[
+        DefaultMaterialLocalizations.delegate,
+      ],
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: FolioSelectionToolbar(
+          anchors: TextSelectionToolbarAnchors(
+            primaryAnchor: primaryAnchor,
+            secondaryAnchor: secondaryAnchor,
+          ),
+          buttonItems: buttonItems,
+        ),
+      ),
     );
   }
 }

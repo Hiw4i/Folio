@@ -1,12 +1,12 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../selection/folio_selection_toolbar.dart';
 import 'glass_geometry.dart';
 import 'glass_motion_controller.dart';
 import 'glass_surface.dart';
 import 'glass_touch_shield.dart';
+import 'liquid_content.dart';
 import 'liquid_shape.dart';
 
 class LiquidSearchMorph extends StatelessWidget {
@@ -43,35 +43,24 @@ class LiquidSearchMorph extends StatelessWidget {
   Widget build(BuildContext context) {
     final contentOpacity = ((frame.morph - 0.52) / 0.30).clamp(0.0, 1.0);
     final cancelOpacity = ((frame.separation - 0.45) / 0.42).clamp(0.0, 1.0);
-    final selfBlur = LiquidShape.motionBlurSigma(
+    final selfBlur = LiquidContent.blurSigma(
       morphVelocity: motion.morphVelocity,
       separationVelocity: motion.separationVelocity,
       reducedMotion: reducedMotion,
     );
-    final mainContentOffset = LiquidShape.contentOffset(
+    final mainContentOffset = LiquidContent.offset(
       displacement: frame.mainDeformation,
       velocity: frame.deformationVelocity,
       press: frame.deformCancel ? 0 : frame.press,
     );
-    final cancelContentOffset = LiquidShape.contentOffset(
+    final cancelContentOffset = LiquidContent.offset(
       displacement: frame.cancelDeformation,
       velocity: frame.deformationVelocity,
       press: frame.deformCancel ? frame.press : 0,
     );
 
-    Widget soften(Widget child) {
-      if (selfBlur <= 0.01) {
-        return child;
-      }
-      return ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(
-          sigmaX: selfBlur,
-          sigmaY: selfBlur,
-          tileMode: ui.TileMode.decal,
-        ),
-        child: child,
-      );
-    }
+    Widget soften(Widget child) =>
+        LiquidContent.soften(child: child, sigma: selfBlur);
 
     return Stack(
       fit: StackFit.expand,
@@ -164,6 +153,8 @@ class LiquidSearchMorph extends StatelessWidget {
                               key: editableKey,
                               controller: searchController,
                               focusNode: searchFocus,
+                              contextMenuBuilder:
+                                  folioEditableTextContextMenuBuilder,
                               style: const TextStyle(
                                 fontFamily: 'Inter',
                                 color: Color(0xFFF4F3EF),

@@ -1,14 +1,18 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/material.dart' show SelectionArea, SelectionAreaState;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 import 'package:folio/shared/glass/liquid_glass_control.dart';
 import 'package:folio/shared/glass/liquid_search_control.dart';
+import 'package:folio/shared/theme/folio_theme.dart';
 
 void main() {
   const path = '/documents/notes.txt';
@@ -67,6 +71,7 @@ void main() {
       find.byKey(const ValueKey<String>('reader_content')),
       findsOneWidget,
     );
+    expect(find.byType(SelectionArea), findsWidgets);
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -100,6 +105,100 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('reader_next_hit')));
     await tester.pumpAndSettle();
     expect(find.text('2 of 2'), findsOneWidget);
+    _expectActivePlainTextHitInReadingArea(tester);
+  });
+
+  testWidgets('plain text selection exposes the Android copy action', (
+    tester,
+  ) async {
+    await openReader(tester);
+
+    final selectionArea = find.byType(SelectionArea).first;
+    final selectionState = tester.state<SelectionAreaState>(selectionArea);
+    selectionState.selectableRegion.selectAll();
+    await tester.pump();
+    expect(
+      selectionState.selectableRegion.contextMenuButtonItems.any(
+        (item) => item.type == ContextMenuButtonType.copy,
+      ),
+      isTrue,
+    );
+    selectionState.selectableRegion.clearSelection();
+  });
+
+  testWidgets('search arrows reveal exact matches across lazy text chunks', (
+    tester,
+  ) async {
+    const longPath = '/documents/long-notes.txt';
+    final longDocument = DocumentEntry(
+      id: longPath,
+      source: const FileDocumentSource(longPath),
+      name: 'Long notes.txt',
+      format: DocumentFormat.txt,
+      sizeBytes: 24000,
+      modifiedAt: DateTime.utc(2026, 9, 13),
+    );
+    String section(int number) {
+      final before = List<String>.filled(
+        100,
+        'Calm lead-in line for section $number.\n\n',
+      ).join();
+      final after = List<String>.filled(
+        110,
+        'Quiet trailing line for section $number.\n\n',
+      ).join();
+      return '$before needle-$number target $after';
+    }
+
+    await tester.pumpWidget(
+      FolioApp(
+        libraryRepository: InMemoryLibraryRepository(
+          documents: <DocumentEntry>[longDocument],
+        ),
+        documentContentSource: MemoryDocumentContentSource(<String, Uint8List>{
+          longPath: Uint8List.fromList(
+            utf8.encode('${section(1)}${section(2)}${section(3)}'),
+          ),
+        }),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Long notes.txt'));
+    await _waitForReaderContent(tester);
+
+    tester
+        .state<LiquidSearchControlState>(find.byType(LiquidSearchControl))
+        .open();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('search_editable')),
+      'target',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await _waitForText(tester, '1 of 3');
+    _expectActivePlainTextHitInReadingArea(tester);
+
+    final list = tester.widget<ListView>(
+      find.byKey(const ValueKey<String>('reader_content')),
+    );
+    final firstOffset = list.controller!.offset;
+    await tester.tap(find.byKey(const ValueKey<String>('reader_next_hit')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 of 3'), findsOneWidget);
+    expect(list.controller!.offset, greaterThan(firstOffset + 200));
+    _expectActivePlainTextHitInReadingArea(tester);
+
+    final secondOffset = list.controller!.offset;
+    await tester.tap(find.byKey(const ValueKey<String>('reader_next_hit')));
+    await tester.pumpAndSettle();
+    expect(find.text('3 of 3'), findsOneWidget);
+    expect(list.controller!.offset, greaterThan(secondOffset + 200));
+    _expectActivePlainTextHitInReadingArea(tester);
+
+    await tester.tap(find.byKey(const ValueKey<String>('reader_previous_hit')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 of 3'), findsOneWidget);
+    _expectActivePlainTextHitInReadingArea(tester);
   });
 
   testWidgets('Back closes keyboard, search, then reader route', (
@@ -303,6 +402,10 @@ void main() {
     expect(find.text('Local notes'), findsOneWidget);
     expect(find.text('Remote illustration'), findsOneWidget);
     expect(find.byType(Image), findsNothing);
+    expect(
+      tester.widget<MarkdownBody>(find.byType(MarkdownBody)).selectable,
+      isTrue,
+    );
 
     tester
         .state<LiquidSearchControlState>(find.byType(LiquidSearchControl))
@@ -325,4 +428,81 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 of 1'), findsOneWidget);
   });
+}
+
+Future<void> _waitForReaderContent(WidgetTester tester) async {
+  for (var attempt = 0; attempt < 30; attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 40)),
+    );
+    await tester.pump();
+    if (find
+        .byKey(const ValueKey<String>('reader_content'))
+        .evaluate()
+        .isNotEmpty) {
+      break;
+    }
+  }
+  await tester.pumpAndSettle();
+}
+
+Future<void> _waitForText(WidgetTester tester, String value) async {
+  for (var attempt = 0; attempt < 30; attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 40)),
+    );
+    await tester.pump();
+    if (find.text(value).evaluate().isNotEmpty) {
+      break;
+    }
+  }
+  await tester.pumpAndSettle();
+}
+
+void _expectActivePlainTextHitInReadingArea(WidgetTester tester) {
+  final activeText = find.descendant(
+    of: find.byKey(const ValueKey<String>('reader_content')),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is Text && _activeSelection(widget.textSpan) != null,
+    ),
+  );
+  expect(activeText, findsOneWidget);
+  final widget = tester.widget<Text>(activeText);
+  final selection = _activeSelection(widget.textSpan)!;
+  final richText = find.descendant(
+    of: activeText,
+    matching: find.byType(RichText),
+  );
+  expect(richText, findsOneWidget);
+  final paragraph = tester.renderObject<RenderParagraph>(richText);
+  final boxes = paragraph.getBoxesForSelection(selection);
+  expect(boxes, isNotEmpty);
+  final globalCenter = paragraph.localToGlobal(boxes.first.toRect().center);
+  expect(globalCenter.dy, greaterThan(80));
+  expect(globalCenter.dy, lessThan(520));
+}
+
+TextSelection? _activeSelection(InlineSpan? root) {
+  var offset = 0;
+  TextSelection? result;
+
+  void visit(InlineSpan span) {
+    if (span case TextSpan(:final text, :final children, :final style)) {
+      final start = offset;
+      offset += text?.length ?? 0;
+      if (style?.backgroundColor == FolioColors.warmAccent && offset > start) {
+        result = TextSelection(baseOffset: start, extentOffset: offset);
+      }
+      if (children != null) {
+        for (final child in children) {
+          visit(child);
+        }
+      }
+    }
+  }
+
+  if (root != null) {
+    visit(root);
+  }
+  return result;
 }

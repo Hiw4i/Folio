@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart'
+    show DefaultMaterialLocalizations, DefaultSelectionStyle;
 import 'package:flutter/widgets.dart';
 
 import '../features/library/data/file_library_repository.dart';
@@ -48,6 +50,10 @@ class _FolioAppState extends State<FolioApp> {
       debugShowCheckedModeBanner: false,
       title: 'Folio',
       textStyle: FolioText.body,
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        DefaultMaterialLocalizations.delegate,
+      ],
+      supportedLocales: const <Locale>[Locale('en')],
       pageRouteBuilder: <T>(RouteSettings settings, WidgetBuilder builder) {
         return PageRouteBuilder<T>(
           settings: settings,
@@ -60,9 +66,13 @@ class _FolioAppState extends State<FolioApp> {
       builder: (context, child) {
         return ScrollConfiguration(
           behavior: const FolioScrollBehavior(),
-          child: DefaultTextStyle(
-            style: FolioText.body,
-            child: child ?? const SizedBox.shrink(),
+          child: DefaultSelectionStyle(
+            cursorColor: FolioColors.warmAccent,
+            selectionColor: const Color(0x66E7C768),
+            child: DefaultTextStyle(
+              style: FolioText.body,
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         );
       },
