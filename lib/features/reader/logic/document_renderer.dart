@@ -491,6 +491,8 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   ReaderFailure? failure;
   TextDocument? content;
   List<ReaderSearchHit> _hits = const <ReaderSearchHit>[];
+  Map<int, List<ReaderSearchHit>> _hitsByChunk =
+      const <int, List<ReaderSearchHit>>{};
   @override
   String query = '';
   @override
@@ -512,9 +514,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
       : _hits[activeHitIndex];
 
   List<ReaderSearchHit> hitsForChunk(int chunkIndex) {
-    return List<ReaderSearchHit>.unmodifiable(
-      _hits.where((hit) => hit.chunkIndex == chunkIndex),
-    );
+    return _hitsByChunk[chunkIndex] ?? const <ReaderSearchHit>[];
   }
 
   @override
@@ -590,6 +590,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     final generation = ++_generation;
     if (normalized.isEmpty || loaded == null) {
       _hits = const <ReaderSearchHit>[];
+      _hitsByChunk = const <int, List<ReaderSearchHit>>{};
       activeHitIndex = -1;
       isSearching = false;
       notifyListeners();
@@ -597,6 +598,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     }
 
     _hits = const <ReaderSearchHit>[];
+    _hitsByChunk = const <int, List<ReaderSearchHit>>{};
     activeHitIndex = -1;
     isSearching = true;
     notifyListeners();
@@ -617,6 +619,18 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
           startOffset: hit[0],
           endOffset: hit[1],
           chunkIndex: hit[2],
+        ),
+      ),
+    );
+    final groupedHits = <int, List<ReaderSearchHit>>{};
+    for (final hit in _hits) {
+      (groupedHits[hit.chunkIndex] ??= <ReaderSearchHit>[]).add(hit);
+    }
+    _hitsByChunk = Map<int, List<ReaderSearchHit>>.unmodifiable(
+      groupedHits.map(
+        (chunkIndex, hits) => MapEntry<int, List<ReaderSearchHit>>(
+          chunkIndex,
+          List<ReaderSearchHit>.unmodifiable(hits),
         ),
       ),
     );
@@ -648,6 +662,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     isSearching = false;
     activeHitIndex = -1;
     _hits = const <ReaderSearchHit>[];
+    _hitsByChunk = const <int, List<ReaderSearchHit>>{};
     if (notify) {
       notifyListeners();
     }

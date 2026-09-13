@@ -95,7 +95,12 @@ abstract class LiquidMotionController extends ChangeNotifier {
     if (steps == _maxSubsteps) {
       _accumulator = math.min(_accumulator, fixedStep);
     }
-    notifyListeners();
+    // A display frame that accumulated less than one simulation step has no
+    // new state to render. Skipping that redundant notification preserves the
+    // fixed 120 Hz simulation while avoiding an unnecessary widget rebuild.
+    if (steps > 0) {
+      notifyListeners();
+    }
     if (isAtRest) {
       _ticker?.muted = true;
     }

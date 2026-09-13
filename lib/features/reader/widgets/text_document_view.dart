@@ -1,4 +1,3 @@
-import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
 import 'package:flutter/material.dart' show SelectionArea;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -7,6 +6,7 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../../shared/selection/folio_selection_toolbar.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/widgets/scroll_edge_fade.dart';
 import '../data/text_document.dart';
 import '../logic/document_renderer.dart';
 import '../logic/reader_state.dart';
@@ -15,6 +15,25 @@ const String _passiveStart = '\u{F0000}';
 const String _passiveEnd = '\u{F0001}';
 const String _activeStart = '\u{F0002}';
 const String _activeEnd = '\u{F0003}';
+
+final List<markdown.InlineSyntax> _searchHitSyntaxes =
+    <markdown.InlineSyntax>[
+      _SearchHitSyntax(
+        tag: 'folio-search-hit',
+        start: _passiveStart,
+        end: _passiveEnd,
+      ),
+      _SearchHitSyntax(
+        tag: 'folio-search-hit-active',
+        start: _activeStart,
+        end: _activeEnd,
+      ),
+    ];
+
+final MarkdownElementBuilder _passiveSearchHitBuilder = _SearchHitBuilder(
+  active: false,
+);
+final MarkdownStyleSheet _markdownStyleSheet = _createMarkdownStyleSheet();
 
 class TextDocumentView extends StatelessWidget {
   const TextDocumentView({
@@ -35,9 +54,8 @@ class TextDocumentView extends StatelessWidget {
       return const _EmptyDocument();
     }
     final activeChunk = renderer.activeHit?.chunkIndex;
-    return FadingEdgeScrollView.fromScrollView(
-      gradientFractionOnStart: 0.10,
-      gradientFractionOnEnd: 0.12,
+    return ScrollEdgeFade(
+      color: FolioColors.background,
       child: ListView.builder(
         key: const ValueKey<String>('reader_content'),
         controller: scrollController,
@@ -198,26 +216,15 @@ class _MarkdownChunk extends StatelessWidget {
       softLineBreak: true,
       onTapLink: (text, href, title) {},
       imageBuilder: (uri, title, alt) => _BlockedImage(label: alt),
-      inlineSyntaxes: <markdown.InlineSyntax>[
-        _SearchHitSyntax(
-          tag: 'folio-search-hit',
-          start: _passiveStart,
-          end: _passiveEnd,
-        ),
-        _SearchHitSyntax(
-          tag: 'folio-search-hit-active',
-          start: _activeStart,
-          end: _activeEnd,
-        ),
-      ],
+      inlineSyntaxes: _searchHitSyntaxes,
       builders: <String, MarkdownElementBuilder>{
-        'folio-search-hit': _SearchHitBuilder(active: false),
+        'folio-search-hit': _passiveSearchHitBuilder,
         'folio-search-hit-active': _SearchHitBuilder(
           active: true,
           targetKey: activeHitKey,
         ),
       },
-      styleSheet: _markdownStyleSheet(),
+      styleSheet: _markdownStyleSheet,
     );
   }
 }
@@ -294,7 +301,7 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
   }
 }
 
-MarkdownStyleSheet _markdownStyleSheet() {
+MarkdownStyleSheet _createMarkdownStyleSheet() {
   const body = TextStyle(
     fontFamily: 'Inter',
     color: FolioColors.textPrimary,

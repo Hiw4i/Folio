@@ -2,7 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
-import '../core/glass_tokens.dart';
 import 'liquid_surface.dart';
 
 class GlassShell extends StatelessWidget {
@@ -126,13 +125,9 @@ class _ShellShadowPainter extends CustomPainter {
       Path()..addRect((Offset.zero & size).inflate(32)),
       path,
     );
-    final shadowPaint = opacity >= 0.999
-        ? _shadowPaint
-        : Paint()
-            ..color = const Color(0xFF020809).withValues(
-              alpha: 0.24 * opacity,
-            )
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    final shadowPaint = opacity >= 0.999 ? _shadowPaint : Paint()
+      ..color = const Color(0xFF020809).withValues(alpha: 0.24 * opacity)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     canvas.save();
     canvas.clipPath(outside);
     canvas.drawPath(path.shift(const Offset(0, 7)), shadowPaint);
@@ -158,8 +153,7 @@ class _ShellPainter extends CustomPainter {
   final bool focused;
 
   /// Fully static paint configs: shared instead of reallocated per repaint.
-  static final Paint _fillPaint = Paint()
-    ..color = const Color(0x14F2F2F0);
+  static final Paint _fillPaint = Paint()..color = const Color(0x14F2F2F0);
   static final Paint _innerWidePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 11

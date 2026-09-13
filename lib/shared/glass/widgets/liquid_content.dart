@@ -12,6 +12,9 @@ import '../core/liquid_shape.dart';
 /// `maximum 6.5`, [LiquidShape.contentScale] and [LiquidShape.motionBlurSigma]
 /// clamped to `2.15`.
 abstract final class LiquidContent {
+  static final Map<double, ui.ImageFilter> _softeningFilters =
+      <double, ui.ImageFilter>{};
+
   static Offset offset({
     required Offset displacement,
     Offset velocity = Offset.zero,
@@ -42,13 +45,31 @@ abstract final class LiquidContent {
       return child;
     }
     return ImageFiltered(
-      imageFilter: ui.ImageFilter.blur(
-        sigmaX: sigma,
-        sigmaY: sigma,
-        tileMode: ui.TileMode.decal,
-      ),
+      imageFilter: softeningFilterFor(sigma),
       child: child,
     );
+  }
+
+  /// Motion blur is visually insensitive to a tenth-pixel step, while the
+  /// quantization keeps native [ui.ImageFilter] allocation out of animation
+  /// frames. This stays separate from [LiquidBlur] because content blur uses
+  /// [ui.TileMode.decal], not backdrop's mirror mode.
+  @visibleForTesting
+  static ui.ImageFilter softeningFilterFor(double sigma) {
+    final quantized = (sigma * 10).roundToDouble() / 10;
+    var filter = _softeningFilters[quantized];
+    if (filter == null) {
+      if (_softeningFilters.length >= 32) {
+        _softeningFilters.clear();
+      }
+      filter = ui.ImageFilter.blur(
+        sigmaX: quantized,
+        sigmaY: quantized,
+        tileMode: ui.TileMode.decal,
+      );
+      _softeningFilters[quantized] = filter;
+    }
+    return filter;
   }
 
   /// Follows the material with inertia: translate + press scale in one place.

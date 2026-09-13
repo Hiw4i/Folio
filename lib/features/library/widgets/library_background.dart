@@ -22,26 +22,8 @@ class LibraryBackground extends StatelessWidget {
             stops: <double>[0, 0.42, 1],
           ),
         ),
-        child: CustomPaint(painter: _AtmospherePainter()),
+        child: const SizedBox.shrink(),
       ),
     );
   }
-}
-
-class _AtmospherePainter extends CustomPainter {
-  const _AtmospherePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final line = Paint()
-      ..color = const Color(0x08FFFFFF)
-      ..strokeWidth = 0.6;
-    const spacing = 36.0;
-    for (var y = 0.0; y < size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), line);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _AtmospherePainter oldDelegate) => false;
 }

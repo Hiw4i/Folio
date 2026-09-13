@@ -70,6 +70,27 @@ void main() {
     },
   );
 
+  test('text renderer indexes matches by rendered chunk', () async {
+    const path = '/chunked-reader.txt';
+    final source = MemoryDocumentContentSource(<String, Uint8List>{
+      path: Uint8List.fromList(
+        utf8.encode('${List<String>.filled(6000, 'x').join()}\n\nneedle needle'),
+      ),
+    });
+    final renderer = TextDocumentRenderer(
+      document: entry(path, DocumentFormat.txt),
+      loader: TextDocumentLoader(source),
+    );
+    addTearDown(renderer.dispose);
+
+    await renderer.open();
+    await renderer.search('needle');
+
+    final activeChunk = renderer.activeHit!.chunkIndex;
+    expect(renderer.hitsForChunk(activeChunk), hasLength(2));
+    expect(renderer.hitsForChunk(activeChunk - 1), isEmpty);
+  });
+
   test('unsupported stage formats expose a typed failure', () async {
     final renderer = UnsupportedDocumentRenderer(
       entry('/reader.pdf', DocumentFormat.pdf),

@@ -1,9 +1,9 @@
-import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/library/data/document_entry.dart';
+import 'package:folio/shared/widgets/scroll_edge_fade.dart';
 
 void main() {
   testWidgets('catalog filters and liquid search update visible documents', (
@@ -15,7 +15,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Folio'), findsOneWidget);
-    expect(find.byType(FadingEdgeScrollView), findsOneWidget);
+    expect(find.byType(ScrollEdgeFade), findsOneWidget);
     expect(find.text('RECENT'), findsOneWidget);
     expect(find.text('Product principles.pdf'), findsOneWidget);
 

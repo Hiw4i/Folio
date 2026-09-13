@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:fading_edge_scrollview/fading_edge_scrollview.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/widgets/scroll_edge_fade.dart';
 import '../../reader/data/document_content_source.dart';
 import '../../reader/widgets/reader_screen.dart';
 import '../data/document_entry.dart';
@@ -163,9 +163,8 @@ class _LibraryContent extends StatelessWidget {
     final topPadding = MediaQuery.viewPaddingOf(context).top;
     final recent = controller.recentDocuments;
     final documents = controller.regularDocuments;
-    return FadingEdgeScrollView.fromScrollView(
-      gradientFractionOnStart: 0.055,
-      gradientFractionOnEnd: 0.12,
+    return ScrollEdgeFade(
+      color: FolioColors.background,
       child: CustomScrollView(
         key: const ValueKey<String>('document_list'),
         controller: scrollController,
