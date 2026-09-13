@@ -1,16 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
-import 'package:folio/shared/glass/glass_button_controller.dart';
 import 'package:folio/shared/glass/glass_geometry.dart';
+import 'package:folio/shared/glass/glass_motion_controller.dart';
 import 'package:folio/shared/glass/liquid_shape.dart';
 
 void main() {
   test('pressed liquid material grows and springs back after release', () {
-    final motion = GlassButtonController();
+    final motion = GlassMotionController(morphEnabled: false);
     addTearDown(motion.dispose);
     const base = Rect.fromLTWH(20, 20, 120, 56);
 
-    motion.beginPointer(position: base.center, timestamp: Duration.zero);
+    motion.beginPointer(
+      position: base.center,
+      timestamp: Duration.zero,
+      target: GlassPointerTarget.main,
+    );
     motion.stepForTest(0.12);
     final pressed = LiquidShape.expandedRect(base, press: motion.press);
 
@@ -26,7 +30,10 @@ void main() {
     expect(pressedPath.getBounds().width, greaterThan(base.width));
     expect(pressedPath.getBounds().height, greaterThan(base.height));
 
-    motion.endPointer();
+    motion.endPointer(
+      position: base.center,
+      timestamp: const Duration(milliseconds: 120),
+    );
     motion.stepForTest(1);
     final settled = LiquidShape.expandedRect(base, press: motion.press);
     expect(settled.width, closeTo(base.width, 0.01));

@@ -1,8 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import 'glass_button_controller.dart';
 import 'glass_geometry.dart';
+import 'glass_motion_controller.dart';
 import 'glass_shell.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
@@ -12,8 +12,9 @@ import 'liquid_surface.dart';
 
 /// Universal liquid substance: one widget for every liquid-glass case.
 ///
-/// - drag physics is always the search reference ([GlassButtonController] /
-///   [GlassMotionController] share `MotionTokens.standard`);
+/// - drag physics is always the search reference: a single
+///   [GlassMotionController] (plain buttons run it with `morphEnabled: false`,
+///   i.e. a parked collapsed menu button);
 /// - painting is always [GlassShell] (deformed) or [LiquidCase] (static);
 /// - foreground always follows via [LiquidContent];
 /// - hit testing always absorbs behind the material via [GlassTouchShield]
@@ -179,14 +180,17 @@ class _LiquidFixedSurface extends StatefulWidget {
 
 class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
     with SingleTickerProviderStateMixin {
-  late final GlassButtonController _motion;
+  // Same controller as the morphing menu/search reference, with morphing
+  // disabled: tapSlop deadzone, live light origin, release impulse and
+  // springs are literally the same code path as a collapsed menu button.
+  late final GlassMotionController _motion;
   final FocusNode _focus = FocusNode(debugLabel: 'Liquid glass');
   int? _pointer;
 
   @override
   void initState() {
     super.initState();
-    _motion = GlassButtonController(vsync: this);
+    _motion = GlassMotionController(vsync: this, morphEnabled: false);
     _focus.addListener(_focusChanged);
   }
 
@@ -248,15 +252,16 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
             press: motion.press,
             tokens: shapeTokens,
           );
+          // Same origin/velocity rule as the morphing menu reference: the
+          // deformation follows the live pointer light, velocity always feeds
+          // the shape (no frozen press origin, no displacement gating).
           final path = GlassGeometryFrame.deformedCapsule(
             rect: materialRect,
-            origin: motion.pressOrigin == Offset.zero
+            origin: motion.lightPosition == Offset.zero
                 ? baseRect.center
-                : motion.pressOrigin,
+                : motion.lightPosition,
             pull: motion.displacement,
-            velocity: motion.displacement == Offset.zero
-                ? Offset.zero
-                : motion.pointerVelocity,
+            velocity: motion.pointerVelocity,
             press: motion.press,
           );
           final light = motion.lightPosition == Offset.zero
@@ -289,6 +294,7 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
                 motion.beginPointer(
                   position: event.localPosition,
                   timestamp: event.timeStamp,
+                  target: GlassPointerTarget.main,
                 );
               },
               onPointerMove: (event) {
@@ -306,7 +312,10 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
                 final inside = baseRect
                     .inflate(hitSlop)
                     .contains(event.localPosition);
-                motion.endPointer();
+                motion.endPointer(
+                  position: event.localPosition,
+                  timestamp: event.timeStamp,
+                );
                 _pointer = null;
                 if (inside) {
                   onTap?.call();

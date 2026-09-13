@@ -755,10 +755,10 @@ class _LiquidChromeObject extends StatelessWidget {
   Widget build(BuildContext context) {
     // Единый liquid-примитив (сам ослабляет tight-ограничения внутренним
     // OverflowBox: оптическая оболочка выступает за [size] без клиппинга).
+    // Зона захвата — дефолтные 8pt, как у меню: палец цепляется одинаково.
     return LiquidGlassControl(
       size: size,
       semanticsLabel: semanticsLabel,
-      hitSlop: 0,
       onTap: onTap,
       child: child,
     );

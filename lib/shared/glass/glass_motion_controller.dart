@@ -10,9 +10,17 @@ enum GlassInteractionState { idle, pressed, dragging, opening, open, closing }
 enum GlassPointerTarget { none, main, cancel }
 
 class GlassMotionController extends LiquidMotionController {
-  GlassMotionController({super.vsync, MotionTokens? tokens})
-    : _tokens = tokens ?? const MotionTokens.standard();
+  /// When false, the controller never morphs: tap/drag drive only
+  /// press/displacement like a collapsed menu button, and a tap never calls
+  /// [requestOpen]. Lets plain buttons share literally the same interaction
+  /// code path as the morphing menu reference.
+  GlassMotionController({
+    super.vsync,
+    MotionTokens? tokens,
+    this.morphEnabled = true,
+  }) : _tokens = tokens ?? const MotionTokens.standard();
 
+  final bool morphEnabled;
   MotionTokens _tokens;
   bool _wantsOpen = false;
   bool _pointerDown = false;
@@ -171,7 +179,9 @@ class GlassMotionController extends LiquidMotionController {
 
     if (wasTap && target == GlassPointerTarget.cancel && separation > 0.82) {
       requestClose();
-    } else if (wasTap && target == GlassPointerTarget.main) {
+    } else if (wasTap &&
+        target == GlassPointerTarget.main &&
+        morphEnabled) {
       if (!_wantsOpen || state == GlassInteractionState.closing) {
         requestOpen();
       }
