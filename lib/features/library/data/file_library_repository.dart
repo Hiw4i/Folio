@@ -5,7 +5,7 @@ import 'dart:isolate';
 
 import 'package:path_provider/path_provider.dart';
 
-import '../../../shared/platform/android_storage_gateway.dart';
+import '../../../shared/android/android_storage_gateway.dart';
 import 'document_entry.dart';
 import 'document_scanner.dart';
 import 'library_repository.dart';

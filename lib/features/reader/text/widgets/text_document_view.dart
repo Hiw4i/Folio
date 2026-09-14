@@ -4,12 +4,12 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:scroll_to_index/scroll_to_index.dart';
 
-import '../../../shared/selection/folio_selection_toolbar.dart';
-import '../../../shared/theme/folio_theme.dart';
-import '../../../shared/widgets/scroll_edge_fade.dart';
+import '../../../../shared/selection/folio_selection_toolbar.dart';
+import '../../../../shared/theme/folio_theme.dart';
+import '../../../../shared/widgets/scroll_edge_fade.dart';
 import '../data/text_document.dart';
-import '../logic/document_renderer.dart';
-import '../logic/reader_state.dart';
+import '../../logic/reader_state.dart';
+import '../logic/text_document_renderer.dart';
 
 const String _passiveStart = '\u{F0000}';
 const String _passiveEnd = '\u{F0001}';

@@ -1,0 +1,159 @@
+:root {
+  color-scheme: dark;
+  --folio-bg: #0b0c0e;
+  --folio-sheet: #f8f7f3;
+  --folio-yellow: #f2c94c;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  overflow: hidden;
+  color: #191919;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+#viewport {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  padding: 82px 10px 110px;
+}
+
+#viewport::-webkit-scrollbar {
+  display: none;
+}
+
+#document {
+  min-width: 0;
+  min-height: 100%;
+}
+
+#status {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  color: rgba(244, 243, 239, 0.62);
+  /* The Flutter ReaderLoadingView owns the loading surface: the platform
+     view stays at opacity 0 until `ready`, so this layer must not paint an
+     opaque backdrop of its own. Kept only as an error fallback (office.js
+     fail() reuses it) and hidden via [hidden] on success. */
+  background: transparent;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 14px;
+  text-align: center;
+  transition: opacity 160ms ease;
+}
+
+#status[hidden] {
+  display: none;
+}
+
+body[data-format="docx"] #document > .docx-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+body[data-format="docx"] .docx-wrapper > section.docx {
+  flex: none;
+  margin: 0 !important;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1056px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28) !important;
+}
+
+body[data-format="docx"] .docx-wrapper > section.docx[data-folio-page] {
+  overflow: hidden;
+}
+
+body[data-format="pptx"] #viewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  touch-action: pan-x pinch-zoom;
+  padding: 74px 0 108px;
+}
+
+/* Landscape: immersive edge-to-edge slides. The floating chrome overlays
+   the slide instead of reserving space, so the slide spans the viewport
+   from the very top to the very bottom with no black bars. A horizontal
+   swipe hides the chrome for full immersion. */
+@media (orientation: landscape) {
+  body[data-format="pptx"] #viewport {
+    padding: 0;
+  }
+}
+
+body[data-format="pptx"] #document,
+body[data-format="pptx"] #all_slides_warpper {
+  display: flex !important;
+  width: max-content !important;
+  min-width: 100%;
+  height: 100% !important;
+  align-items: center;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.folio-slide-frame {
+  position: relative;
+  flex: 0 0 100vw;
+  width: 100vw;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100vw;
+}
+
+.folio-slide-frame > .slide {
+  position: absolute !important;
+  margin: 0 !important;
+  transform-origin: top left !important;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.34);
+}
+
+mark[data-folio-search] {
+  padding: 0;
+  color: inherit;
+  background: rgba(242, 201, 76, 0.34);
+  border-radius: 2px;
+}
+
+mark[data-folio-search="active"] {
+  background: rgba(242, 201, 76, 0.92);
+  box-shadow: 0 0 0 2px rgba(242, 201, 76, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #viewport,
+  #status {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

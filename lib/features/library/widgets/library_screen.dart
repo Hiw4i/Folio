@@ -7,6 +7,7 @@ import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/theme/folio_theme.dart';
 import '../../../shared/widgets/scroll_edge_fade.dart';
 import '../../reader/data/document_content_source.dart';
+import '../../reader/logic/reader_preloader.dart';
 import '../../reader/widgets/reader_screen.dart';
 import '../data/document_entry.dart';
 import '../data/library_repository.dart';
@@ -347,10 +348,19 @@ class _DocumentOpenContainer extends StatelessWidget {
       transitionType: ContainerTransitionType.fade,
       transitionDuration: reducedMotion
           ? Duration.zero
-          : const Duration(milliseconds: 260),
+          : const Duration(milliseconds: 340),
       closedBuilder: (context, openContainer) => DocumentRow(
         key: ValueKey<String>('document_${document.id}'),
         document: document,
+        onTapDown: () {
+          // Warm the renderer while the container morph still runs, so the
+          // reader route adopts in-flight I/O instead of starting it after
+          // the 340ms transition.
+          ReaderPreloader.prime(
+            document: document,
+            contentSource: documentContentSource,
+          );
+        },
         onTap: () {
           if (!document.isAvailable) {
             unawaited(controller.markOpened(document));
@@ -364,19 +374,23 @@ class _DocumentOpenContainer extends StatelessWidget {
           } else {
             unawaited(
               Future<void>.delayed(
-                const Duration(milliseconds: 280),
+                const Duration(milliseconds: 360),
                 () => controller.markOpened(document),
               ),
             );
           }
         },
       ),
-      openBuilder: (context, closeContainer) => ReaderScreen(
-        document: document,
-        contentSource: documentContentSource,
-        deferInitialLoad: !reducedMotion,
-        onRemoveFromRecents: () => controller.removeFromRecents(document),
-      ),
+      openBuilder: (context, closeContainer) {
+        final primed = ReaderPreloader.adopt(document);
+        return ReaderScreen(
+          document: document,
+          contentSource: documentContentSource,
+          deferInitialLoad: primed == null && !reducedMotion,
+          initialRenderer: primed,
+          onRemoveFromRecents: () => controller.removeFromRecents(document),
+        );
+      },
     );
   }
 }

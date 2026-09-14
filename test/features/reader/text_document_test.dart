@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
-import 'package:folio/features/reader/data/text_document.dart';
+import 'package:folio/features/reader/text/data/text_document.dart';
 
 void main() {
   DocumentEntry document(String path, DocumentFormat format) => DocumentEntry(

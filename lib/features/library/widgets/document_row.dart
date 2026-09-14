@@ -4,10 +4,16 @@ import '../../../shared/theme/folio_theme.dart';
 import '../data/document_entry.dart';
 
 class DocumentRow extends StatefulWidget {
-  const DocumentRow({required this.document, required this.onTap, super.key});
+  const DocumentRow({
+    required this.document,
+    required this.onTap,
+    this.onTapDown,
+    super.key,
+  });
 
   final DocumentEntry document;
   final VoidCallback onTap;
+  final VoidCallback? onTapDown;
 
   @override
   State<DocumentRow> createState() => _DocumentRowState();
@@ -31,7 +37,10 @@ class _DocumentRowState extends State<DocumentRow> {
       label: '${document.name}, ${formatFileSize(document.sizeBytes)}',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => _setPressed(true),
+        onTapDown: (_) {
+          _setPressed(true);
+          widget.onTapDown?.call();
+        },
         onTapCancel: () => _setPressed(false),
         onTapUp: (_) => _setPressed(false),
         onTap: widget.onTap,

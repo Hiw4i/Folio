@@ -77,10 +77,7 @@ class ReaderChromeShell extends StatelessWidget {
               excluding: inactive,
               child: Opacity(
                 opacity: t,
-                child: Transform.translate(
-                  offset: Offset(0, dy),
-                  child: child,
-                ),
+                child: Transform.translate(offset: Offset(0, dy), child: child),
               ),
             ),
           ),

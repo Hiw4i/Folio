@@ -9,9 +9,10 @@ import 'package:flutter/material.dart'
 import 'package:flutter/widgets.dart';
 import 'package:pdfrx/pdfrx.dart';
 
-import '../../../shared/selection/folio_selection_toolbar.dart';
-import '../../../shared/theme/folio_theme.dart';
-import '../logic/document_renderer.dart';
+import '../../../../shared/selection/folio_selection_toolbar.dart';
+import '../../../../shared/theme/folio_theme.dart';
+import '../../widgets/reader_loading_view.dart';
+import '../logic/pdf_document_renderer.dart';
 
 class PdfDocumentView extends StatefulWidget {
   const PdfDocumentView({
@@ -82,18 +83,13 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       onInteractionUpdate: _interactionUpdated,
       onGeneralTap: _generalTap,
       loadingBannerBuilder: (context, downloaded, total) {
-        return const ColoredBox(
+        // Same unified surface as every other format: dots plus the single
+        // `Opening document` line.
+        return ColoredBox(
           color: FolioColors.background,
-          child: Center(
-            child: Text(
-              'Opening PDF…',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                color: FolioColors.textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+          child: ReaderLoadingView(
+            document: widget.renderer.document,
+            immediate: true,
           ),
         );
       },

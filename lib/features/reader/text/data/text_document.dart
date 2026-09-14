@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import '../../library/data/document_entry.dart';
-import 'document_content_source.dart';
+import '../../../library/data/document_entry.dart';
+import '../../data/document_content_source.dart';
 
 enum TextDocumentEncoding { utf8, utf16LittleEndian, utf16BigEndian }
 

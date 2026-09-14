@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
-import 'package:folio/features/reader/logic/document_renderer.dart';
 import 'package:folio/features/reader/logic/reader_state.dart';
+import 'package:folio/features/reader/pdf/logic/pdf_document_renderer.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 void main() {

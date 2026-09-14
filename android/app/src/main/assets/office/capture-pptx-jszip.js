@@ -1,0 +1,1 @@
+window.folioPptxJsZip = window.JSZip;

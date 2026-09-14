@@ -224,7 +224,7 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
                       size.width - _tokens.horizontalMargin - 34,
                       centerY,
                     ),
-                    expandedGroupLeft: _tokens.horizontalMargin,
+                    anchorExpandedRight: true,
                     centerY: centerY,
                   );
                   return Listener(

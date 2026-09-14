@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/features/reader/widgets/pdf_document_view.dart';
+import 'package:folio/features/reader/pdf/widgets/pdf_document_view.dart';
 
 void main() {
   testWidgets('PDF selection toolbar provides its own Material localization', (

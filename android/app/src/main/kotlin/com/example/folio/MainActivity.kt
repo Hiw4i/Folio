@@ -30,6 +30,8 @@ class MainActivity : FlutterActivity() {
     private companion object {
         const val STORAGE_CHANNEL = "folio/storage"
         const val INTENTS_CHANNEL = "folio/intents"
+        const val OFFICE_CHANNEL = "folio/office"
+        const val OFFICE_VIEW_TYPE = "folio/office_view"
         const val DOCUMENT_ACCESS_REQUEST = 6107
     }
 
@@ -41,9 +43,21 @@ class MainActivity : FlutterActivity() {
     private val documentIoExecutor = Executors.newFixedThreadPool(2) { task ->
         Thread(task, "folio-document-io").apply { isDaemon = true }
     }
+    private lateinit var officeDocuments: OfficeDocumentManager
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        officeDocuments = OfficeDocumentManager(this, documentIoExecutor)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OFFICE_CHANNEL)
+            .setMethodCallHandler(officeDocuments::handle)
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            OFFICE_VIEW_TYPE,
+            OfficePlatformViewFactory(
+                flutterEngine.dartExecutor.binaryMessenger,
+                officeDocuments,
+            ),
+        )
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -140,6 +154,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         if (!isChangingConfigurations) {
+            if (::officeDocuments.isInitialized) officeDocuments.closeAll()
             pdfSessions.values.forEach { it.close() }
             pdfSessions.clear()
             documentIoExecutor.shutdownNow()

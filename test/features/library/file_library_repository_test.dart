@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/library/data/document_scanner.dart';
 import 'package:folio/features/library/data/file_library_repository.dart';
 import 'package:folio/features/library/data/library_repository.dart';
-import 'package:folio/shared/platform/android_storage_gateway.dart';
+import 'package:folio/shared/android/android_storage_gateway.dart';
 
 void main() {
   test(

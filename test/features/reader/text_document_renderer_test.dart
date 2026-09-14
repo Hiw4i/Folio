@@ -4,9 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
-import 'package:folio/features/reader/data/text_document.dart';
-import 'package:folio/features/reader/logic/document_renderer.dart';
 import 'package:folio/features/reader/logic/reader_state.dart';
+import 'package:folio/features/reader/logic/unsupported_document_renderer.dart';
+import 'package:folio/features/reader/text/data/text_document.dart';
+import 'package:folio/features/reader/text/logic/text_document_renderer.dart';
 
 void main() {
   DocumentEntry entry(String path, DocumentFormat format) => DocumentEntry(
@@ -74,7 +75,9 @@ void main() {
     const path = '/chunked-reader.txt';
     final source = MemoryDocumentContentSource(<String, Uint8List>{
       path: Uint8List.fromList(
-        utf8.encode('${List<String>.filled(6000, 'x').join()}\n\nneedle needle'),
+        utf8.encode(
+          '${List<String>.filled(6000, 'x').join()}\n\nneedle needle',
+        ),
       ),
     });
     final renderer = TextDocumentRenderer(

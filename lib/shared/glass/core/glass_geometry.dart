@@ -283,6 +283,7 @@ abstract final class GlassGeometry {
     bool deformCancel = false,
     Offset? collapsedCenter,
     double? expandedGroupLeft,
+    bool anchorExpandedRight = false,
     double? centerY,
     GlassTokens tokens = const GlassTokens(),
   }) {
@@ -300,8 +301,19 @@ abstract final class GlassGeometry {
     );
     final searchWidth = math.min(tokens.maxSearchWidth, availableSearchWidth);
     final groupWidth = searchWidth + tokens.settledGap + tokens.cancelWidth;
-    final finalMainLeft =
-        expandedGroupLeft ?? (viewport.width - groupWidth) / 2;
+    // The search button lives at the right edge, so the expanded group
+    // hugs the same edge instead of jumping to the left corner on wide
+    // screens. Narrow screens are unaffected: the group fills the width
+    // either way.
+    final double finalMainLeft;
+    if (expandedGroupLeft != null) {
+      finalMainLeft = expandedGroupLeft;
+    } else if (anchorExpandedRight) {
+      finalMainLeft =
+          viewport.width - tokens.horizontalMargin - groupWidth;
+    } else {
+      finalMainLeft = (viewport.width - groupWidth) / 2;
+    }
     final finalMainCenterX = finalMainLeft + searchWidth / 2;
     final resolvedCollapsedCenter =
         collapsedCenter ?? Offset(viewport.width / 2, viewport.height * 0.40);

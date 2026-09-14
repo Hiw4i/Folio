@@ -11,9 +11,12 @@ import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
 import '../logic/document_renderer.dart';
 import '../logic/reader_state.dart';
-import 'pdf_document_view.dart';
+import '../pdf/widgets/pdf_document_view.dart';
+import '../powerpoint/widgets/powerpoint_document_view.dart';
+import '../text/widgets/text_document_view.dart';
+import '../word/widgets/word_document_view.dart';
 import 'reader_chrome.dart';
-import 'text_document_view.dart';
+import 'reader_loading_view.dart';
 
 class ReaderScreen extends StatefulWidget {
   const ReaderScreen({
@@ -21,14 +24,20 @@ class ReaderScreen extends StatefulWidget {
     required this.contentSource,
     required this.onRemoveFromRecents,
     this.deferInitialLoad = false,
+    this.initialRenderer,
     super.key,
   });
 
   final DocumentEntry document;
   final DocumentContentSource contentSource;
   final Future<void> Function() onRemoveFromRecents;
+
   /// Lets the container transform render without competing with document I/O.
   final bool deferInitialLoad;
+
+  /// A renderer already warming via [ReaderPreloader]. When provided, the
+  /// screen adopts it as-is and never restarts its in-flight [open].
+  final DocumentRenderer? initialRenderer;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -77,13 +86,20 @@ class _ReaderScreenState extends State<ReaderScreen>
       curve: ReaderChromeSpec.showCurve,
       reverseCurve: ReaderChromeSpec.hideCurve,
     );
-    _renderer = createDocumentRenderer(
-      document: widget.document,
-      contentSource: widget.contentSource,
-    )..addListener(_rendererChanged);
+    _renderer = widget.initialRenderer ??
+        createDocumentRenderer(
+          document: widget.document,
+          contentSource: widget.contentSource,
+        );
+    _renderer.addListener(_rendererChanged);
     _scrollController.addListener(_scrollChanged);
-    if (widget.deferInitialLoad) {
-      _initialLoadDelay = Timer(const Duration(milliseconds: 260), () {
+    if (widget.initialRenderer != null) {
+      // A primed renderer is already opening (or open): adopt it without
+      // restarting its in-flight work, so I/O overlapped the open animation.
+    } else if (widget.deferInitialLoad) {
+      // Matches the OpenContainer morph so document I/O never competes with
+      // the transition (the primed path skips this entirely).
+      _initialLoadDelay = Timer(const Duration(milliseconds: 340), () {
         if (mounted) {
           unawaited(_renderer.open());
         }
@@ -493,6 +509,8 @@ class _ReaderScreenState extends State<ReaderScreen>
                                     ? '$percent%'
                                     : _renderer is PdfDocumentRenderer
                                     ? _renderer.positionLabel
+                                    : _renderer is OfficeDocumentRendererBase
+                                    ? _renderer.positionLabel
                                     : widget.document.format.extension
                                           .toUpperCase(),
                               );
@@ -537,61 +555,65 @@ class _ReaderScreenState extends State<ReaderScreen>
                       progress: _chromeProgress,
                       hiddenDy: ReaderChromeSpec.topHiddenDy,
                       child: LiquidMorphingControl(
-                  key: _menuKey,
-                  collapsedHitKey: const ValueKey<String>('reader_menu_button'),
-                  collapsedSemanticsLabel: 'Document menu',
-                  expandedSemanticsLabel: 'Document menu',
-                  geometryBuilder: (viewport) {
-                    final top = media.viewPadding.top + 10;
-                    return LiquidMorphGeometry(
-                      collapsedRect: Rect.fromLTWH(
-                        viewport.width - 64,
-                        top,
-                        48,
-                        48,
+                        key: _menuKey,
+                        collapsedHitKey: const ValueKey<String>(
+                          'reader_menu_button',
+                        ),
+                        collapsedSemanticsLabel: 'Document menu',
+                        expandedSemanticsLabel: 'Document menu',
+                        geometryBuilder: (viewport) {
+                          final top = media.viewPadding.top + 10;
+                          return LiquidMorphGeometry(
+                            collapsedRect: Rect.fromLTWH(
+                              viewport.width - 64,
+                              top,
+                              48,
+                              48,
+                            ),
+                            expandedRect: Rect.fromLTWH(
+                              viewport.width - 242,
+                              top,
+                              226,
+                              112,
+                            ),
+                            expandedCornerRadius: 24,
+                          );
+                        },
+                        collapsedChild: const Center(
+                          child: Icon(
+                            LucideIcons.moreVertical,
+                            size: 20,
+                            color: FolioColors.textPrimary,
+                          ),
+                        ),
+                        expandedChild: _ReaderMenuContent(
+                          onFileInfo: () {
+                            _menuKey.currentState?.close();
+                            setState(() => _infoOpen = true);
+                          },
+                          onRemove: () {
+                            _menuKey.currentState?.close();
+                            unawaited(widget.onRemoveFromRecents());
+                          },
+                        ),
+                        onExpansionChanged: (expanded) {
+                          if (!mounted || _menuOpen == expanded) {
+                            return;
+                          }
+                          setState(() => _menuOpen = expanded);
+                          if (expanded) {
+                            _setChromeTarget(true);
+                          }
+                        },
                       ),
-                      expandedRect: Rect.fromLTWH(
-                        viewport.width - 242,
-                        top,
-                        226,
-                        112,
-                      ),
-                      expandedCornerRadius: 24,
-                    );
-                  },
-                  collapsedChild: const Center(
-                    child: Icon(
-                      LucideIcons.moreVertical,
-                      size: 20,
-                      color: FolioColors.textPrimary,
                     ),
                   ),
-                  expandedChild: _ReaderMenuContent(
-                    onFileInfo: () {
-                      _menuKey.currentState?.close();
-                      setState(() => _infoOpen = true);
-                    },
-                    onRemove: () {
-                      _menuKey.currentState?.close();
-                      unawaited(widget.onRemoveFromRecents());
-                    },
-                  ),
-                  onExpansionChanged: (expanded) {
-                    if (!mounted || _menuOpen == expanded) {
-                      return;
-                    }
-                    setState(() => _menuOpen = expanded);
-                    if (expanded) {
-                      _setChromeTarget(true);
-                    }
-                  },
-                ),
-              ),
-            ),
                   Positioned(
                     right: 20,
                     bottom:
-                        media.viewInsets.bottom + media.viewPadding.bottom + 102,
+                        media.viewInsets.bottom +
+                        media.viewPadding.bottom +
+                        102,
                     child: ReaderChromeShell(
                       progress: _chromeProgress,
                       hiddenDy: ReaderChromeSpec.pillHiddenDy,
@@ -663,42 +685,251 @@ class _ReaderBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return switch (renderer.loadState) {
-      ReaderLoadState.loading
-          when renderer is PdfDocumentRenderer &&
-              (renderer as PdfDocumentRenderer).sourceReady =>
-        PdfDocumentView(
-          renderer: renderer as PdfDocumentRenderer,
-          onContentTap: onContentTap,
-          onVerticalReadingGesture: onPdfReadingGesture,
-        ),
-      ReaderLoadState.loading => const _ReaderStatus(
-        title: 'Opening document',
-        message: 'Preparing document for reading…',
-        loading: true,
-      ),
-      ReaderLoadState.failed => _ReaderFailureView(
+    // One loading surface for every format. Office keeps its platform view
+    // mounted underneath and crossfades: the WebView's own HTML status is
+    // never shown (transparent background, opacity 0 until ready).
+    if (renderer.loadState == ReaderLoadState.failed) {
+      return _ReaderFailureView(
         failure: renderer.failure!,
         onRetry: renderer.open,
-      ),
-      ReaderLoadState.ready when renderer is TextDocumentRenderer =>
-        TextDocumentView(
-          renderer: renderer as TextDocumentRenderer,
+      );
+    }
+    if (renderer is TextDocumentRenderer) {
+      final text = renderer as TextDocumentRenderer;
+      if (renderer.loadState == ReaderLoadState.loading) {
+        return ReaderLoadingView(document: renderer.document);
+      }
+      final content = text.content;
+      if (content == null || content.chunks.isEmpty) {
+        return const _ReaderStatus(
+          title: 'Nothing to display',
+          message: 'This document has no readable content.',
+        );
+      }
+      return ReaderContentFadeIn(
+        child: TextDocumentView(
+          renderer: text,
           scrollController: scrollController,
           activeHitKey: activeHitKey,
         ),
-      ReaderLoadState.ready when renderer is PdfDocumentRenderer =>
-        PdfDocumentView(
-          renderer: renderer as PdfDocumentRenderer,
+      );
+    }
+    if (renderer is PdfDocumentRenderer) {
+      final pdf = renderer as PdfDocumentRenderer;
+      // Progressive loading: as soon as the document reference exists the
+      // viewer mounts and streams pages; its internal banner (same unified
+      // design) covers the remaining wait. The fade wrapper sits at a stable
+      // position so the viewer state survives the loading → ready rebuild.
+      if (!pdf.sourceReady) {
+        return ReaderLoadingView(document: renderer.document);
+      }
+      return ReaderContentFadeIn(
+        child: PdfDocumentView(
+          renderer: pdf,
           onContentTap: onContentTap,
           onVerticalReadingGesture: onPdfReadingGesture,
         ),
-      ReaderLoadState.ready => const _ReaderStatus(
+      );
+    }
+    if (renderer is OfficeDocumentRendererBase) {
+      final office = renderer as OfficeDocumentRendererBase;
+      if (!office.sourceReady) {
+        return ReaderLoadingView(document: renderer.document);
+      }
+      final Widget view = renderer is WordDocumentRenderer
+          ? WordDocumentView(
+              renderer: renderer as WordDocumentRenderer,
+              onContentTap: onContentTap,
+              onReadingGesture: onPdfReadingGesture,
+            )
+          : PowerPointDocumentView(
+              renderer: renderer as PowerPointDocumentRenderer,
+              onContentTap: onContentTap,
+              onReadingGesture: onPdfReadingGesture,
+            );
+      return _OfficeStagedView(renderer: office, view: view);
+    }
+    if (renderer.loadState == ReaderLoadState.ready) {
+      return const _ReaderStatus(
         title: 'Nothing to display',
         message: 'This document has no readable content.',
-      ),
-    };
+      );
+    }
+    return ReaderLoadingView(document: renderer.document);
   }
+}
+
+/// Office staged reveal: the platform view stays mounted at opacity 0 while
+/// rendering (warming under the Flutter loader), then crossfades with the
+/// loader overlay instead of swapping to the WebView's own status text.
+class _OfficeStagedView extends StatefulWidget {
+  const _OfficeStagedView({required this.renderer, required this.view});
+
+  final OfficeDocumentRendererBase renderer;
+  final Widget view;
+
+  @override
+  State<_OfficeStagedView> createState() => _OfficeStagedViewState();
+}
+
+class _OfficeStagedViewState extends State<_OfficeStagedView> {
+  static const Duration _crossfade = Duration(milliseconds: 240);
+
+  bool _overlayVisible = true;
+  bool _overlayOpaque = true;
+  Timer? _overlayTimer;
+
+  bool get _ready => widget.renderer.loadState == ReaderLoadState.ready;
+
+  @override
+  void initState() {
+    super.initState();
+    _overlayVisible = !_ready;
+    _overlayOpaque = !_ready;
+    widget.renderer.addListener(_rendererChanged);
+  }
+
+  @override
+  void didUpdateWidget(_OfficeStagedView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.renderer, widget.renderer)) {
+      oldWidget.renderer.removeListener(_rendererChanged);
+      widget.renderer.addListener(_rendererChanged);
+      _overlayTimer?.cancel();
+      _overlayVisible = !_ready;
+      _overlayOpaque = !_ready;
+    }
+  }
+
+  void _rendererChanged() {
+    if (!mounted) {
+      return;
+    }
+    if (_ready && _overlayOpaque) {
+      setState(() => _overlayOpaque = false);
+      _overlayTimer?.cancel();
+      _overlayTimer = Timer(_crossfade, () {
+        if (mounted && _ready) {
+          setState(() => _overlayVisible = false);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _overlayTimer?.cancel();
+    widget.renderer.removeListener(_rendererChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    final ready = _ready;
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        AnimatedOpacity(
+          opacity: ready ? 1 : 0,
+          duration: reducedMotion ? Duration.zero : _crossfade,
+          curve: Curves.easeOutCubic,
+          child: IgnorePointer(ignoring: !ready, child: widget.view),
+        ),
+        // Mounted immediately (no grace): preparation already proved slow by
+        // reaching this stage, so hiding the loader here would flash empty
+        // background. The overlay then crossfades out on `ready`.
+        if (_overlayVisible)
+          AnimatedOpacity(
+            opacity: _overlayOpaque ? 1 : 0,
+            duration: reducedMotion ? Duration.zero : _crossfade,
+            curve: Curves.easeOutCubic,
+            child: ReaderLoadingView(
+              document: widget.renderer.document,
+              immediate: true,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Horizontal padding inside the reader title pill (18pt each side).
+const double _titlePadding = 36;
+
+double _measureTitleWidth(
+  String text,
+  TextDirection direction,
+  TextScaler scaler,
+) {
+  final painter =
+      TextPainter(
+          text: TextSpan(text: text, style: _TopChromeContent._titleStyle),
+          maxLines: 1,
+          textDirection: direction,
+          textScaler: scaler,
+        )
+        ..layout();
+  return painter.width;
+}
+
+/// Truncates a file name to [maxWidth], keeping the extension readable:
+/// `(Edited) Моя психика в социальн...pdf`, `Как сделать вку...txt`.
+/// Names without a usable extension fall back to a plain end-ellipsis.
+String _truncateTitle(
+  String name,
+  double maxWidth,
+  TextDirection direction,
+  TextScaler scaler,
+) {
+  double widthOf(String text) =>
+      _measureTitleWidth(text, direction, scaler);
+  if (maxWidth <= 0) {
+    return '…';
+  }
+  if (widthOf(name) <= maxWidth) {
+    return name;
+  }
+  final dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot == name.length - 1) {
+    return _truncateWithSuffix(name, '…', maxWidth, widthOf);
+  }
+  final stem = name.substring(0, dot);
+  final ext = name.substring(dot + 1);
+  return _truncateWithSuffix(stem, '...$ext', maxWidth, widthOf);
+}
+
+String _truncateWithSuffix(
+  String stem,
+  String suffix,
+  double maxWidth,
+  double Function(String text) widthOf,
+) {
+  if (widthOf(suffix) > maxWidth) {
+    // Extreme narrowness: even the suffix alone doesn't fit — shrink it.
+    var lo = 0;
+    var hi = suffix.length;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) >> 1;
+      if (widthOf('${suffix.substring(0, mid)}…') <= maxWidth) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return '${suffix.substring(0, lo)}…';
+  }
+  var lo = 0;
+  var hi = stem.length;
+  while (lo < hi) {
+    final mid = (lo + hi + 1) >> 1;
+    if (widthOf('${stem.substring(0, mid)}$suffix') <= maxWidth) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return '${stem.substring(0, lo)}$suffix';
 }
 
 class _TopChromeContent extends StatelessWidget {
@@ -730,32 +961,46 @@ class _TopChromeContent extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final textPainter =
-                  TextPainter(
-                    text: TextSpan(text: document.name, style: _titleStyle),
-                    maxLines: 1,
-                    ellipsis: '…',
-                    textDirection: Directionality.of(context),
-                    textScaler: MediaQuery.textScalerOf(context),
-                  )..layout(
-                    maxWidth: (constraints.maxWidth - 36).clamp(
-                      0.0,
-                      double.infinity,
-                    ),
-                  );
-              final titleWidth = (textPainter.width + 36).clamp(
+              final direction = Directionality.of(context);
+              final textScaler = MediaQuery.textScalerOf(context);
+              final maxTextWidth = (constraints.maxWidth - _titlePadding)
+                  .clamp(0.0, double.infinity);
+              // The liquid surface loosens incoming constraints (its optical
+              // shell overflows the material box), so the label is truncated
+              // up front and the Text gets a tight box: `ellipsis` alone
+              // would never engage and the text would bleed past the glass.
+              final label = _truncateTitle(
+                document.name,
+                maxTextWidth,
+                direction,
+                textScaler,
+              );
+              final labelWidth =
+                  _measureTitleWidth(label, direction, textScaler);
+              final titleWidth = (labelWidth + _titlePadding).clamp(
                 76.0,
                 constraints.maxWidth,
+              );
+              final textWidth = (titleWidth - _titlePadding).clamp(
+                0.0,
+                double.infinity,
               );
               return Align(
                 child: _LiquidChromeObject(
                   key: const ValueKey<String>('reader_title_glass'),
                   size: Size(titleWidth, 42),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Center(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: _titlePadding / 2,
+                    ),
+                    child: SizedBox(
+                      key: const ValueKey<String>('reader_title_text_box'),
+                      width: textWidth,
                       child: Text(
-                        document.name,
+                        label,
+                        // Screen readers announce the full name even when the
+                        // pill shows the truncated form.
+                        semanticsLabel: document.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
@@ -879,6 +1124,9 @@ class _SearchNavigator extends StatelessWidget {
         : currentRenderer is PdfDocumentRenderer &&
               currentRenderer.hasNoSearchableText
         ? 'No searchable text'
+        : currentRenderer is OfficeDocumentRendererBase &&
+              currentRenderer.hasNoSearchableText
+        ? 'No searchable text'
         : currentRenderer.hitCount == 0
         ? 'No matches'
         : '${currentRenderer.activeHitIndex + 1} of ${currentRenderer.hitCount}';
@@ -892,7 +1140,8 @@ class _SearchNavigator extends StatelessWidget {
         textPainter.width +
         _gap +
         _buttonWidth * 2 +
-        _rightPadding;
+        _rightPadding +
+        4;
     return LiquidGlass.fixed(
       key: const ValueKey<String>('reader_search_navigator_glass'),
       size: Size(width, _height),
@@ -1183,13 +1432,11 @@ class _ReaderStatus extends StatelessWidget {
   const _ReaderStatus({
     required this.title,
     required this.message,
-    this.loading = false,
     this.action,
   });
 
   final String title;
   final String message;
-  final bool loading;
   final Widget? action;
 
   @override
@@ -1200,10 +1447,6 @@ class _ReaderStatus extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            if (loading) ...<Widget>[
-              const _LoadingGlyph(),
-              const SizedBox(height: 18),
-            ],
             Text(
               title,
               textAlign: TextAlign.center,
@@ -1224,47 +1467,6 @@ class _ReaderStatus extends StatelessWidget {
             if (action != null) ...<Widget>[const SizedBox(height: 2), action!],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _LoadingGlyph extends StatelessWidget {
-  const _LoadingGlyph();
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Loading',
-      child: const SizedBox(
-        width: 34,
-        height: 6,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: <Widget>[
-            _LoadingDot(opacity: 0.35),
-            _LoadingDot(opacity: 0.62),
-            _LoadingDot(opacity: 0.92),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LoadingDot extends StatelessWidget {
-  const _LoadingDot({required this.opacity});
-
-  final double opacity;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: FolioColors.textPrimary.withValues(alpha: opacity),
       ),
     );
   }
