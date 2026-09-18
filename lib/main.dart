@@ -1,11 +1,11 @@
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/material.dart'
     show
         DefaultMaterialLocalizations,
         DefaultSelectionStyle,
         TextSelectionTheme,
         TextSelectionThemeData;
-import 'package:flutter/widgets.dart';
-
 import '../features/library/data/file_library_repository.dart';
 import '../features/library/data/library_repository.dart';
 import '../features/library/logic/library_controller.dart';
@@ -13,8 +13,6 @@ import '../features/library/widgets/library_screen.dart';
 import '../features/reader/data/document_content_source.dart';
 import '../shared/android/android_storage_gateway.dart';
 import '../shared/theme/folio_theme.dart';
-
-import 'package:flutter/services.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,8 +28,6 @@ void main() {
   );
   runApp(const FolioApp());
 }
-
-
 
 class FolioApp extends StatefulWidget {
   const FolioApp({

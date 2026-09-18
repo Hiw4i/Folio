@@ -6,6 +6,7 @@ import '../core/liquid_shape.dart';
 import '../motion/glass_motion_controller.dart';
 import '../surface/glass_shell.dart';
 import '../surface/liquid_surface.dart';
+import 'adaptive_glass_foreground.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
 import 'liquid_morphing_control.dart';
@@ -255,18 +256,16 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
             // Same origin/velocity rule as the morphing menu reference: the
             // deformation follows the live pointer light, velocity always feeds
             // the shape (no frozen press origin, no displacement gating).
+            final light = motion.lightPosition == Offset.zero
+                ? baseRect.center
+                : motion.lightPosition;
             final path = GlassGeometryFrame.deformedCapsule(
               rect: materialRect,
-              origin: motion.lightPosition == Offset.zero
-                  ? baseRect.center
-                  : motion.lightPosition,
+              origin: light,
               pull: motion.displacement,
               velocity: motion.pointerVelocity,
               press: motion.press,
             );
-            final light = motion.lightPosition == Offset.zero
-                ? baseRect.center
-                : motion.lightPosition;
             final contentOffset = LiquidContent.offset(
               displacement: motion.displacement,
               velocity: motion.pointerVelocity,
@@ -351,37 +350,40 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
                     },
                     child: SizedBox.fromSize(
                       size: boxSize,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          GlassShell(
-                            path: path,
-                            glowCenter: light,
-                            press: motion.press,
-                            focused: focus.hasFocus,
-                            blurSigma: motion.backdropBlurSigma,
-                          ),
-                          // Passive/cluster glass has no TouchShield on top (it
-                          // would eat inner buttons in the gesture arena);
-                          // instead a non-competitive wall behind the content
-                          // stops the traversal so nothing behind ever sees
-                          // taps or drags started on the material.
-                          if (!interactive) const GlassHitBlocker(),
-                          Opacity(
-                            opacity: transitionOpacity,
-                            child: Center(
-                              child: Transform.translate(
-                                offset: contentOffset,
-                                child: Transform.scale(
-                                  scale: LiquidContent.scale(motion.press),
-                                  child: widget.child,
+                      child: AdaptiveGlassForegroundGroup(
+                        samplePoint: adaptiveGlassSamplePoint(baseRect),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: <Widget>[
+                            GlassShell(
+                              path: path,
+                              glowCenter: light,
+                              press: motion.press,
+                              focused: focus.hasFocus,
+                              blurSigma: motion.backdropBlurSigma,
+                            ),
+                            // Passive/cluster glass has no TouchShield on top (it
+                            // would eat inner buttons in the gesture arena);
+                            // instead a non-competitive wall behind the content
+                            // stops the traversal so nothing behind ever sees
+                            // taps or drags started on the material.
+                            if (!interactive) const GlassHitBlocker(),
+                            Opacity(
+                              opacity: transitionOpacity,
+                              child: Center(
+                                child: Transform.translate(
+                                  offset: contentOffset,
+                                  child: Transform.scale(
+                                    scale: LiquidContent.scale(motion.press),
+                                    child: widget.child,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          // Single-action glass absorbs behind it on top.
-                          if (interactive) const GlassTouchShield(),
-                        ],
+                            // Single-action glass absorbs behind it on top.
+                            if (interactive) const GlassTouchShield(),
+                          ],
+                        ),
                       ),
                     ),
                   ),

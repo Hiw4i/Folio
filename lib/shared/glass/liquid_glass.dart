@@ -24,6 +24,7 @@ export 'surface/glass_shell.dart';
 export 'surface/glass_surface.dart';
 export 'surface/liquid_surface.dart';
 export 'widgets/glass_touch_shield.dart';
+export 'widgets/adaptive_glass_foreground.dart';
 export 'widgets/liquid_container.dart';
 export 'widgets/liquid_content.dart';
 export 'widgets/liquid_glass_button.dart';

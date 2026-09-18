@@ -115,7 +115,7 @@ class LiquidCase extends StatelessWidget {
           boxShadow: transitionOpacity >= 0.999
               ? const <BoxShadow>[
                   BoxShadow(
-                    color: Color(0x3D020809),
+                    color: Color(0x4D020809),
                     blurRadius: 22,
                     offset: Offset(0, 8),
                   ),
@@ -123,7 +123,7 @@ class LiquidCase extends StatelessWidget {
               : <BoxShadow>[
                   BoxShadow(
                     color: const Color(0xFF020809).withValues(
-                      alpha: (0x3D / 255) * transitionOpacity,
+                      alpha: (0x4D / 255) * transitionOpacity,
                     ),
                     blurRadius: 22,
                     offset: const Offset(0, 8),

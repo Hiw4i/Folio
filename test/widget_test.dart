@@ -89,6 +89,9 @@ void main() {
       find.byKey(const ValueKey<String>('reader_surface')),
       findsOneWidget,
     );
+
+    // Flush the deferred Recents update (360ms after the container morph).
+    await tester.pump(const Duration(milliseconds: 500));
   });
 
   testWidgets('dragging the selected filter lens changes the format', (

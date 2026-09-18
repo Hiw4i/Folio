@@ -9,6 +9,7 @@ import '../core/liquid_shape.dart';
 import '../motion/liquid_segmented_controller.dart';
 import '../surface/glass_shell.dart';
 import '../surface/liquid_surface.dart';
+import 'adaptive_glass_foreground.dart';
 
 @immutable
 class LiquidSegment<T> {
@@ -287,11 +288,6 @@ class _SegmentLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = Color.lerp(
-      FolioColors.textSecondary,
-      FolioColors.textPrimary,
-      selected,
-    )!;
     return Semantics(
       button: true,
       selected: selected > 0.94,
@@ -308,26 +304,39 @@ class _SegmentLabel extends StatelessWidget {
           }
           return KeyEventResult.ignored;
         },
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 5),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  color: foreground,
-                  fontSize: 13.5,
-                  fontWeight: selected > 0.58
-                      ? FontWeight.w600
-                      : FontWeight.w500,
-                  letterSpacing: -0.12,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return AdaptiveGlassForegroundGroup(
+              samplePoint: adaptiveGlassSamplePoint(
+                Offset.zero &
+                    Size(
+                      constraints.maxWidth,
+                      _LiquidSegmentedControlState._height,
+                    ),
+              ),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: AdaptiveGlassText(
+                      label,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        color: FolioColors.textPrimary,
+                        fontSize: 13.5,
+                        fontWeight: selected > 0.58
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        letterSpacing: -0.12,
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

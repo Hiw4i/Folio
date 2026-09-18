@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import 'adaptive_glass_foreground.dart';
 import 'liquid_glass_control.dart';
 
 class LiquidGlassButton extends StatelessWidget {
@@ -22,7 +23,7 @@ class LiquidGlassButton extends StatelessWidget {
       semanticsLabel: label,
       size: Size(width, height),
       onTap: onTap,
-      child: Text(
+      child: AdaptiveGlassText(
         label,
         maxLines: 1,
         style: const TextStyle(

@@ -115,7 +115,7 @@ class _ShellShadowPainter extends CustomPainter {
   /// Fully static config: shared across frames/canvases instead of being
   /// reallocated on every repaint. Pixel-identical output.
   static final Paint _shadowPaint = Paint()
-    ..color = const Color(0xFF020809).withValues(alpha: 0.24)
+    ..color = const Color(0xFF020809).withValues(alpha: 0.30)
     ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
 
   @override
@@ -126,7 +126,7 @@ class _ShellShadowPainter extends CustomPainter {
       path,
     );
     final shadowPaint = opacity >= 0.999 ? _shadowPaint : Paint()
-      ..color = const Color(0xFF020809).withValues(alpha: 0.24 * opacity)
+      ..color = const Color(0xFF020809).withValues(alpha: 0.30 * opacity)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     canvas.save();
     canvas.clipPath(outside);
@@ -153,7 +153,10 @@ class _ShellPainter extends CustomPainter {
   final bool focused;
 
   /// Fully static paint configs: shared instead of reallocated per repaint.
-  static final Paint _fillPaint = Paint()..color = const Color(0x14F2F2F0);
+  /// Balanced mid-gray tint: everything lighter than the fill darkens
+  /// (white -> light gray), everything darker lightens (black -> dark gray).
+  /// Alpha controls the strength of the pull.
+  static final Paint _fillPaint = Paint()..color = const Color(0x33868683);
   static final Paint _innerWidePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 11

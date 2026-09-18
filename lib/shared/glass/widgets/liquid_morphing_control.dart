@@ -6,6 +6,7 @@ import '../core/liquid_shape.dart';
 import '../motion/glass_motion_controller.dart';
 import '../surface/glass_shell.dart';
 import '../surface/liquid_surface.dart';
+import 'adaptive_glass_foreground.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
 
@@ -196,171 +197,176 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
             Widget soften(Widget value) =>
                 LiquidContent.soften(child: value, sigma: selfBlur);
 
-            return Listener(
-              behavior: HitTestBehavior.deferToChild,
-              onPointerDown: (event) {
-                if (_pointer != null ||
-                    !materialRect
-                        .inflate(widget.hitSlop)
-                        .contains(event.localPosition)) {
-                  return;
-                }
-                _pointer = event.pointer;
-                _motion.beginPointer(
-                  position: event.localPosition,
-                  timestamp: event.timeStamp,
-                  target: GlassPointerTarget.main,
-                );
-              },
-              onPointerMove: (event) {
-                if (_pointer == event.pointer) {
-                  _motion.movePointer(
+            return AdaptiveGlassForegroundGroup(
+              samplePoint: adaptiveGlassSamplePoint(materialRect),
+              child: Listener(
+                behavior: HitTestBehavior.deferToChild,
+                onPointerDown: (event) {
+                  if (_pointer != null ||
+                      !materialRect
+                          .inflate(widget.hitSlop)
+                          .contains(event.localPosition)) {
+                    return;
+                  }
+                  _pointer = event.pointer;
+                  _motion.beginPointer(
                     position: event.localPosition,
                     timestamp: event.timeStamp,
+                    target: GlassPointerTarget.main,
                   );
-                }
-              },
-              onPointerUp: (event) {
-                if (_pointer == event.pointer) {
-                  _motion.endPointer(
-                    position: event.localPosition,
-                    timestamp: event.timeStamp,
-                  );
-                  _pointer = null;
-                }
-              },
-              onPointerCancel: (event) {
-                if (_pointer == event.pointer) {
-                  _motion.cancelPointer();
-                  _pointer = null;
-                }
-              },
-              child: Stack(
-                fit: StackFit.expand,
-                clipBehavior: Clip.none,
-                children: <Widget>[
-                  if (isExpanded)
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: close,
-                        child: const ColoredBox(color: Color(0x01000000)),
+                },
+                onPointerMove: (event) {
+                  if (_pointer == event.pointer) {
+                    _motion.movePointer(
+                      position: event.localPosition,
+                      timestamp: event.timeStamp,
+                    );
+                  }
+                },
+                onPointerUp: (event) {
+                  if (_pointer == event.pointer) {
+                    _motion.endPointer(
+                      position: event.localPosition,
+                      timestamp: event.timeStamp,
+                    );
+                    _pointer = null;
+                  }
+                },
+                onPointerCancel: (event) {
+                  if (_pointer == event.pointer) {
+                    _motion.cancelPointer();
+                    _pointer = null;
+                  }
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  clipBehavior: Clip.none,
+                  children: <Widget>[
+                    if (isExpanded)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: close,
+                          child: const ColoredBox(color: Color(0x01000000)),
+                        ),
+                      ),
+                    Positioned.fromRect(
+                      rect: opticalBounds,
+                      child: GlassShell(
+                        path: localPath,
+                        glowCenter: origin - opticalBounds.topLeft,
+                        press: _motion.press,
+                        focused: _focus.hasFocus,
+                        blurSigma: _motion.backdropBlurSigma,
                       ),
                     ),
-                  Positioned.fromRect(
-                    rect: opticalBounds,
-                    child: GlassShell(
-                      path: localPath,
-                      glowCenter: origin - opticalBounds.topLeft,
-                      press: _motion.press,
-                      focused: _focus.hasFocus,
-                      blurSigma: _motion.backdropBlurSigma,
+                    Positioned.fromRect(
+                      rect: materialRect.inflate(widget.hitSlop),
+                      child: const GlassTouchShield(),
                     ),
-                  ),
-                  Positioned.fromRect(
-                    rect: materialRect.inflate(widget.hitSlop),
-                    child: const GlassTouchShield(),
-                  ),
-                  Positioned.fromRect(
-                    rect: opticalBounds,
-                    child: ClipPath(
-                      clipper: _MorphPathClipper(localPath),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          Positioned.fromRect(
-                            rect: contentRect.shift(-opticalBounds.topLeft),
-                            child: IgnorePointer(
-                              child: ExcludeSemantics(
-                                child: soften(
-                                  Opacity(
-                                    opacity: collapsedOpacity * transitionOpacity,
-                                    child: Transform.translate(
-                                      offset: contentOffset,
-                                      child: Transform.scale(
-                                        scale: LiquidShape.contentScale(
-                                          _motion.press,
-                                        ),
-                                        child: widget.collapsedChild,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (isExpanded ||
-                              _motion.state != GlassInteractionState.idle)
+                    Positioned.fromRect(
+                      rect: opticalBounds,
+                      child: ClipPath(
+                        clipper: _MorphPathClipper(localPath),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: <Widget>[
                             Positioned.fromRect(
-                              rect: geometry.expandedRect.shift(
-                                -opticalBounds.topLeft,
-                              ),
+                              rect: contentRect.shift(-opticalBounds.topLeft),
                               child: IgnorePointer(
-                                ignoring: morph < 0.82,
                                 child: ExcludeSemantics(
-                                  excluding: morph < 0.82,
                                   child: soften(
                                     Opacity(
-                                      opacity: expandedOpacity * transitionOpacity,
+                                      opacity:
+                                          collapsedOpacity * transitionOpacity,
                                       child: Transform.translate(
                                         offset: contentOffset,
-                                        child: widget.expandedChild,
+                                        child: Transform.scale(
+                                          scale: LiquidShape.contentScale(
+                                            _motion.press,
+                                          ),
+                                          child: widget.collapsedChild,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                        ],
+                            if (isExpanded ||
+                                _motion.state != GlassInteractionState.idle)
+                              Positioned.fromRect(
+                                rect: geometry.expandedRect.shift(
+                                  -opticalBounds.topLeft,
+                                ),
+                                child: IgnorePointer(
+                                  ignoring: morph < 0.82,
+                                  child: ExcludeSemantics(
+                                    excluding: morph < 0.82,
+                                    child: soften(
+                                      Opacity(
+                                        opacity:
+                                            expandedOpacity * transitionOpacity,
+                                        child: Transform.translate(
+                                          offset: contentOffset,
+                                          child: widget.expandedChild,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  if (morph < 0.72)
-                    Positioned.fromRect(
-                      rect: geometry.collapsedRect.inflate(widget.hitSlop),
-                      child: GestureDetector(
-                        key: widget.collapsedHitKey,
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          if (!_motion.wantsOpen) {
-                            open();
-                          }
-                        },
-                        child: Semantics(
-                          button: true,
-                          label: widget.collapsedSemanticsLabel,
-                          onTap: open,
-                          child: Focus(
-                            focusNode: _focus,
-                            onKeyEvent: (node, event) {
-                              if (event is KeyDownEvent &&
-                                  (event.logicalKey ==
-                                          LogicalKeyboardKey.enter ||
-                                      event.logicalKey ==
-                                          LogicalKeyboardKey.space)) {
-                                open();
-                                return KeyEventResult.handled;
-                              }
-                              return KeyEventResult.ignored;
-                            },
+                    if (morph < 0.72)
+                      Positioned.fromRect(
+                        rect: geometry.collapsedRect.inflate(widget.hitSlop),
+                        child: GestureDetector(
+                          key: widget.collapsedHitKey,
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            if (!_motion.wantsOpen) {
+                              open();
+                            }
+                          },
+                          child: Semantics(
+                            button: true,
+                            label: widget.collapsedSemanticsLabel,
+                            onTap: open,
+                            child: Focus(
+                              focusNode: _focus,
+                              onKeyEvent: (node, event) {
+                                if (event is KeyDownEvent &&
+                                    (event.logicalKey ==
+                                            LogicalKeyboardKey.enter ||
+                                        event.logicalKey ==
+                                            LogicalKeyboardKey.space)) {
+                                  open();
+                                  return KeyEventResult.handled;
+                                }
+                                return KeyEventResult.ignored;
+                              },
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (morph >= 0.72 && widget.expandedSemanticsLabel != null)
+                      Positioned.fromRect(
+                        rect: geometry.expandedRect,
+                        child: IgnorePointer(
+                          child: Semantics(
+                            container: true,
+                            explicitChildNodes: true,
+                            label: widget.expandedSemanticsLabel,
                             child: const SizedBox.expand(),
                           ),
                         ),
                       ),
-                    ),
-                  if (morph >= 0.72 && widget.expandedSemanticsLabel != null)
-                    Positioned.fromRect(
-                      rect: geometry.expandedRect,
-                      child: IgnorePointer(
-                        child: Semantics(
-                          container: true,
-                          explicitChildNodes: true,
-                          label: widget.expandedSemanticsLabel,
-                          child: const SizedBox.expand(),
-                        ),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             );
           },

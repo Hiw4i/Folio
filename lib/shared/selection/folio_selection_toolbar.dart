@@ -190,12 +190,9 @@ class _PillIconButton extends StatelessWidget {
         child: SizedBox.fromSize(
           size: const Size(_FolioPill.buttonExtent, _FolioPill.buttonExtent),
           child: Center(
-            child: Icon(
-              icon,
-              size: 17,
-              color: onPressed == null
-                  ? FolioColors.textTertiary
-                  : FolioColors.textPrimary,
+            child: Opacity(
+              opacity: onPressed == null ? 0.38 : 1,
+              child: AdaptiveGlassIcon(icon, size: 17),
             ),
           ),
         ),

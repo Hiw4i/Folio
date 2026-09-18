@@ -24,6 +24,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: false
+  shaders:
+    - assets/shaders/adaptive_glass_foreground.frag
   fonts:
     - family: Inter
       fonts:
