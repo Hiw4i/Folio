@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'dart:async';
 import 'package:flutter/material.dart'
     show
         DefaultMaterialLocalizations,
@@ -12,6 +13,9 @@ import '../features/library/logic/library_controller.dart';
 import '../features/library/widgets/library_screen.dart';
 import '../features/reader/data/document_content_source.dart';
 import '../shared/android/android_storage_gateway.dart';
+import '../shared/settings/folio_settings_controller.dart';
+import '../shared/settings/folio_settings_scope.dart';
+import '../shared/settings/folio_settings_store.dart';
 import '../shared/theme/folio_theme.dart';
 
 void main() {
@@ -29,15 +33,19 @@ void main() {
   runApp(const FolioApp());
 }
 
+
+
 class FolioApp extends StatefulWidget {
   const FolioApp({
     this.libraryRepository,
     this.documentContentSource,
+    this.settingsStore,
     super.key,
   });
 
   final LibraryRepository? libraryRepository;
   final DocumentContentSource? documentContentSource;
+  final FolioSettingsStore? settingsStore;
 
   @override
   State<FolioApp> createState() => _FolioAppState();
@@ -45,10 +53,15 @@ class FolioApp extends StatefulWidget {
 
 class _FolioAppState extends State<FolioApp> {
   late final LibraryController _libraryController;
+  late final FolioSettingsController _settingsController;
 
   @override
   void initState() {
     super.initState();
+    _settingsController = FolioSettingsController(
+      store: widget.settingsStore ?? FileFolioSettingsStore(),
+    );
+    unawaited(_settingsController.load());
     _libraryController = LibraryController(
       repository:
           widget.libraryRepository ??
@@ -59,53 +72,58 @@ class _FolioAppState extends State<FolioApp> {
   @override
   void dispose() {
     _libraryController.dispose();
+    _settingsController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return WidgetsApp(
-      color: FolioColors.background,
-      debugShowCheckedModeBanner: false,
-      title: 'Folio',
-      textStyle: FolioText.body,
-      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-        DefaultMaterialLocalizations.delegate,
-      ],
-      supportedLocales: const <Locale>[Locale('en')],
-      pageRouteBuilder: <T>(RouteSettings settings, WidgetBuilder builder) {
-        return PageRouteBuilder<T>(
-          settings: settings,
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
-          pageBuilder: (context, primaryAnimation, secondaryAnimation) =>
-              builder(context),
-        );
-      },
-      builder: (context, child) {
-        return TextSelectionTheme(
-          data: const TextSelectionThemeData(
-            cursorColor: FolioColors.cursor,
-            selectionColor: FolioColors.selection,
-            selectionHandleColor: FolioColors.selectionHandle,
-          ),
-          child: ScrollConfiguration(
-            behavior: const FolioScrollBehavior(),
-            child: DefaultSelectionStyle(
+    return FolioSettingsScope(
+      controller: _settingsController,
+      child: WidgetsApp(
+        color: FolioColors.background,
+        debugShowCheckedModeBanner: false,
+        title: 'Folio',
+        textStyle: FolioText.body,
+        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+          DefaultMaterialLocalizations.delegate,
+        ],
+        supportedLocales: const <Locale>[Locale('en')],
+        pageRouteBuilder: <T>(RouteSettings settings, WidgetBuilder builder) {
+          return PageRouteBuilder<T>(
+            settings: settings,
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+            pageBuilder: (context, primaryAnimation, secondaryAnimation) =>
+                builder(context),
+          );
+        },
+        builder: (context, child) {
+          return TextSelectionTheme(
+            data: const TextSelectionThemeData(
               cursorColor: FolioColors.cursor,
               selectionColor: FolioColors.selection,
-              child: DefaultTextStyle(
-                style: FolioText.body,
-                child: child ?? const SizedBox.shrink(),
+              selectionHandleColor: FolioColors.selectionHandle,
+            ),
+            child: ScrollConfiguration(
+              behavior: const FolioScrollBehavior(),
+              child: DefaultSelectionStyle(
+                cursorColor: FolioColors.cursor,
+                selectionColor: FolioColors.selection,
+                child: DefaultTextStyle(
+                  style: FolioText.body,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
-          ),
-        );
-      },
-      home: LibraryScreen(
-        controller: _libraryController,
-        documentContentSource:
-            widget.documentContentSource ?? const DeviceDocumentContentSource(),
+          );
+        },
+        home: LibraryScreen(
+          controller: _libraryController,
+          documentContentSource:
+              widget.documentContentSource ??
+              const DeviceDocumentContentSource(),
+        ),
       ),
     );
   }

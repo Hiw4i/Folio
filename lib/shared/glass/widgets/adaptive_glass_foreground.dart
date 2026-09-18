@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../settings/folio_settings_scope.dart';
+
 /// Fraction down from the top of a glass rect used as the shared backdrop
 /// sample. One point per control keeps black/white stable; per-pixel sampling
 /// would shimmer on gradients. Single helper so fixed/morph/search never drift.
@@ -101,6 +103,14 @@ class AdaptiveGlassIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!FolioSettingsScope.blurEnabledOf(context)) {
+      return Icon(
+        icon,
+        size: size,
+        semanticLabel: semanticLabel,
+        color: const Color(0xFFFFFFFF),
+      );
+    }
     final shaderSupported =
         AdaptiveGlassDebug.shaderFilterSupportedOverride ??
         ui.ImageFilter.isShaderFilterSupported;
@@ -170,6 +180,22 @@ class AdaptiveGlassText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!FolioSettingsScope.blurEnabledOf(context)) {
+      return Text(
+        data,
+        style: style.copyWith(
+          color: const Color(0xFFFFFFFF),
+          shadows: const <Shadow>[],
+        ),
+        maxLines: maxLines,
+        overflow: overflow,
+        softWrap: softWrap,
+        textAlign: textAlign,
+        textDirection: textDirection,
+        textScaler: textScaler,
+        semanticsLabel: semanticsLabel,
+      );
+    }
     final effectiveStyle = DefaultTextStyle.of(context).style.merge(style);
     final direction = textDirection ?? Directionality.of(context);
     final scaler = textScaler ?? MediaQuery.textScalerOf(context);
@@ -190,6 +216,7 @@ class AdaptiveGlassText extends StatelessWidget {
           textAlign: textAlign,
         )..layout(maxWidth: layoutWidth);
         final size = constraints.constrain(painter.size);
+        painter.dispose();
         final key = _TextMaskKey(
           data,
           effectiveStyle,
@@ -441,12 +468,13 @@ class _RenderAdaptiveBackdrop extends RenderBox {
     markNeedsPaint();
   }
 
-  void invalidateAncestorGeometry() => _invalidateFilter();
+  void invalidateAncestorGeometry() {
+    // Re-evaluate actual screen-space geometry in paint. Do not discard the
+    // shader merely because an ancestor rebuilt with identical bounds.
+    markNeedsPaint();
+  }
 
   void _ensureFilter() {
-    if (_filterCreationFailed) {
-      return;
-    }
     final globalBounds = MatrixUtils.transformRect(
       getTransformTo(null),
       Offset.zero & size,
@@ -462,7 +490,7 @@ class _RenderAdaptiveBackdrop extends RenderBox {
         (group?.globalSamplePoint ??
             physicalBounds.center / _devicePixelRatio) *
         _devicePixelRatio;
-    if (_filter != null &&
+    if ((_filter != null || _filterCreationFailed) &&
         physicalBounds == _physicalBounds &&
         samplePoint == _physicalSamplePoint) {
       return;
@@ -483,12 +511,15 @@ class _RenderAdaptiveBackdrop extends RenderBox {
       _filter = ui.ImageFilter.shader(shader);
       _physicalBounds = physicalBounds;
       _physicalSamplePoint = samplePoint;
+      _filterCreationFailed = false;
       oldShader?.dispose();
     } on Object catch (error) {
       shader?.dispose();
       _shader = oldShader;
       _filter = null;
       _filterCreationFailed = true;
+      _physicalBounds = physicalBounds;
+      _physicalSamplePoint = samplePoint;
       debugPrint('Adaptive glass filter disabled for this glyph: $error');
     }
   }
@@ -750,6 +781,7 @@ ui.Image _createTextMask(_TextMaskKey key) {
     textAlign: key.textAlign,
   )..layout(maxWidth: key.logicalSize.width);
   painter.paint(canvas, Offset.zero);
+  painter.dispose();
   final picture = recorder.endRecording();
   final image = picture.toImageSync(
     (key.logicalSize.width * key.pixelRatio).ceil().clamp(1, 1 << 20),

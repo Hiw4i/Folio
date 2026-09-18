@@ -5,8 +5,7 @@ import 'package:folio/shared/glass/motion/glass_motion_controller.dart';
 /// the same code path as a collapsed menu button. This locks the parity:
 /// identical pointer input must produce identical press/displacement.
 void main() {
-  GlassMotionController button() =>
-      GlassMotionController(morphEnabled: false);
+  GlassMotionController button() => GlassMotionController(morphEnabled: false);
   GlassMotionController menu() => GlassMotionController();
 
   void drive(GlassMotionController motion) {

@@ -2,6 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import '../../settings/folio_settings_scope.dart';
+
 import 'liquid_surface.dart';
 
 class GlassShell extends StatelessWidget {
@@ -28,6 +30,7 @@ class GlassShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
     final motionSigma = blurSigma;
     final transitionSigma = LiquidBlurScope.maybeOf(context);
     final transitionOpacity = LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
@@ -41,14 +44,17 @@ class GlassShell extends StatelessWidget {
     }
     return RepaintBoundary(
       child: CustomPaint(
-        painter: _ShellShadowPainter(path, opacity: transitionOpacity),
+        painter: blurEnabled
+            ? _ShellShadowPainter(path, opacity: transitionOpacity)
+            : null,
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
             ClipPath(
               clipper: _ShellClipper(path),
               child: BackdropFilter.grouped(
-                filter: sigma == null
+                enabled: blurEnabled,
+                filter: !blurEnabled || sigma == null
                     ? backdropBlur
                     : LiquidBlur.filterFor(sigma),
                 child: CustomPaint(
@@ -65,6 +71,7 @@ class GlassShell extends StatelessWidget {
                   glowCenter: glowCenter,
                   press: press,
                   focused: focused,
+                  blurEnabled: blurEnabled,
                 ),
               ),
             ),
@@ -145,6 +152,7 @@ class _ShellPainter extends CustomPainter {
     required this.glowCenter,
     required this.press,
     required this.focused,
+    required this.blurEnabled,
   });
 
   final Path path;
@@ -152,11 +160,15 @@ class _ShellPainter extends CustomPainter {
   final double press;
   final bool focused;
 
+  final bool blurEnabled;
+
   /// Fully static paint configs: shared instead of reallocated per repaint.
   /// Balanced mid-gray tint: everything lighter than the fill darkens
   /// (white -> light gray), everything darker lightens (black -> dark gray).
   /// Alpha controls the strength of the pull.
   static final Paint _fillPaint = Paint()..color = const Color(0x33868683);
+  static final Paint _opaqueFillPaint = Paint()
+    ..color = const Color(0xFF202123);
   static final Paint _innerWidePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 11
@@ -199,12 +211,14 @@ class _ShellPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawPath(path, _fillPaint);
-    canvas.save();
-    canvas.clipPath(path);
-    canvas.drawPath(path, _innerWidePaint);
-    canvas.drawPath(path, _innerNarrowPaint);
-    canvas.restore();
+    canvas.drawPath(path, blurEnabled ? _fillPaint : _opaqueFillPaint);
+    if (blurEnabled) {
+      canvas.save();
+      canvas.clipPath(path);
+      canvas.drawPath(path, _innerWidePaint);
+      canvas.drawPath(path, _innerNarrowPaint);
+      canvas.restore();
+    }
     final pressAmount = press.clamp(0.0, 1.0);
     if (pressAmount > 0.01) {
       canvas.save();
@@ -258,5 +272,6 @@ class _ShellPainter extends CustomPainter {
       oldDelegate.path != path ||
       oldDelegate.glowCenter != glowCenter ||
       oldDelegate.press != press ||
-      oldDelegate.focused != focused;
+      oldDelegate.focused != focused ||
+      oldDelegate.blurEnabled != blurEnabled;
 }

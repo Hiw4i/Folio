@@ -1,0 +1,215 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:folio/shared/persistence/atomic_file.dart';
+import 'package:folio/shared/settings/folio_settings.dart';
+import 'package:folio/shared/settings/folio_settings_controller.dart';
+import 'package:folio/shared/settings/folio_settings_store.dart';
+
+import '../../support/memory_settings_store.dart';
+
+void main() {
+  test('defaults preserve both visual effects', () {
+    const settings = FolioSettings();
+    expect(settings.blurEnabled, isTrue);
+    expect(settings.liquidMotionEnabled, isTrue);
+  });
+
+  test('JSON preserves independent switches and tolerates invalid fields', () {
+    const settings = FolioSettings(blurEnabled: false);
+    expect(FolioSettings.fromJson(settings.toJson()), settings);
+    expect(
+      FolioSettings.fromJson(<String, Object?>{
+        'blurEnabled': 'false',
+        'liquidMotionEnabled': false,
+      }),
+      const FolioSettings(liquidMotionEnabled: false),
+    );
+  });
+
+  test('disk load cannot undo user interaction during startup', () async {
+    final store = _ControlledStore();
+    final controller = FolioSettingsController(store: store);
+    addTearDown(controller.dispose);
+    final loading = controller.load();
+    controller.setBlurEnabled(false);
+    store.loaded.complete(const FolioSettings(liquidMotionEnabled: false));
+    await loading;
+    await controller.flush();
+    expect(
+      controller.settings,
+      const FolioSettings(blurEnabled: false, liquidMotionEnabled: false),
+    );
+    expect(store.written.last, controller.settings);
+  });
+
+  test(
+    'saves are serialized and eventually persist the latest value',
+    () async {
+      final store = _ControlledStore()..blockFirstSave = true;
+      store.loaded.complete(const FolioSettings());
+      final controller = FolioSettingsController(store: store);
+      addTearDown(controller.dispose);
+      await controller.load();
+      controller.setBlurEnabled(false);
+      await store.firstWriteStarted.future;
+      controller.setLiquidMotionEnabled(false);
+      controller.setBlurEnabled(true);
+      expect(store.maxConcurrentWrites, 1);
+      store.firstWriteFinished.complete();
+      await controller.flush();
+      expect(store.maxConcurrentWrites, 1);
+      expect(
+        store.written.last,
+        const FolioSettings(liquidMotionEnabled: false),
+      );
+    },
+  );
+
+  test('save failure keeps live preferences and supports retry', () async {
+    final store = _ControlledStore()..failWrites = true;
+    store.loaded.complete(const FolioSettings());
+    final controller = FolioSettingsController(store: store);
+    addTearDown(controller.dispose);
+    await controller.load();
+    controller.setBlurEnabled(false);
+    await controller.flush();
+    expect(controller.settings.blurEnabled, isFalse);
+    expect(controller.hasSaveError, isTrue);
+    store.failWrites = false;
+    controller.retrySave();
+    await controller.flush();
+    expect(controller.hasSaveError, isFalse);
+    expect(store.written.last.blurEnabled, isFalse);
+  });
+
+  test(
+    'pending persistence finishes without notification after disposal',
+    () async {
+      final store = _ControlledStore();
+      final controller = FolioSettingsController(store: store);
+      controller.setBlurEnabled(false);
+      controller.dispose();
+      store.loaded.complete(const FolioSettings());
+      await controller.flush();
+      expect(store.written.single.blurEnabled, isFalse);
+      controller.setLiquidMotionEnabled(false);
+      expect(controller.settings.liquidMotionEnabled, isTrue);
+    },
+  );
+
+  test('same value does not schedule a write', () async {
+    final store = MemorySettingsStore();
+    final controller = FolioSettingsController(store: store);
+    addTearDown(controller.dispose);
+    await controller.load();
+    controller.setBlurEnabled(true);
+    await controller.flush();
+    expect(store.saves, 0);
+  });
+
+  test('new controller restores switches saved by previous instance', () async {
+    final directory = await Directory.systemTemp.createTemp('folio-settings-');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = FileFolioSettingsStore(
+      directoryProvider: () async => directory,
+    );
+    expect(await store.load(), const FolioSettings());
+    final first = FolioSettingsController(store: store);
+    await first.load();
+    first.setBlurEnabled(false);
+    first.setLiquidMotionEnabled(false);
+    await first.flush();
+    first.dispose();
+    final second = FolioSettingsController(store: store);
+    addTearDown(second.dispose);
+    await second.load();
+    expect(
+      second.settings,
+      const FolioSettings(blurEnabled: false, liquidMotionEnabled: false),
+    );
+    expect(
+      await File('${directory.path}/folio_settings.v1.json.tmp').exists(),
+      isFalse,
+    );
+  });
+
+  test('corrupt settings file does not prevent controller startup', () async {
+    final directory = await Directory.systemTemp.createTemp('folio-corrupt-');
+    addTearDown(() => directory.delete(recursive: true));
+    await File('${directory.path}/folio_settings.v1.json').writeAsString('{');
+    final controller = FolioSettingsController(
+      store: FileFolioSettingsStore(directoryProvider: () async => directory),
+    );
+    addTearDown(controller.dispose);
+    await controller.load();
+    expect(controller.settings, const FolioSettings());
+  });
+
+  test(
+    'atomic writer replaces content and removes the temporary file',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('folio-atomic-');
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/cache.json');
+      await writeFileAtomically(file, 'old');
+      await writeFileAtomically(file, 'new');
+      expect(await file.readAsString(), 'new');
+      expect(await File('${file.path}.tmp').exists(), isFalse);
+    },
+  );
+
+  test('failed atomic write preserves the previous destination', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'folio-atomic-fail-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/cache.json');
+    await file.writeAsString('last-good');
+    // A directory at the temp path forces a write error even when tests run
+    // as an administrator (chmod-based permission tests are unreliable).
+    await Directory('${file.path}.tmp').create();
+    await expectLater(
+      writeFileAtomically(file, 'replacement'),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(await file.readAsString(), 'last-good');
+  });
+}
+
+class _ControlledStore implements FolioSettingsStore {
+  final loaded = Completer<FolioSettings>();
+  final firstWriteStarted = Completer<void>();
+  final firstWriteFinished = Completer<void>();
+  final written = <FolioSettings>[];
+  bool blockFirstSave = false;
+  bool failWrites = false;
+  int activeWrites = 0;
+  int maxConcurrentWrites = 0;
+
+  @override
+  Future<FolioSettings> load() => loaded.future;
+
+  @override
+  Future<void> save(FolioSettings settings) async {
+    activeWrites++;
+    if (activeWrites > maxConcurrentWrites) {
+      maxConcurrentWrites = activeWrites;
+    }
+    try {
+      if (!firstWriteStarted.isCompleted) {
+        firstWriteStarted.complete();
+        if (blockFirstSave) {
+          await firstWriteFinished.future;
+        }
+      }
+      if (failWrites) {
+        throw const FileSystemException('Simulated full disk');
+      }
+      written.add(settings);
+    } finally {
+      activeWrites--;
+    }
+  }
+}

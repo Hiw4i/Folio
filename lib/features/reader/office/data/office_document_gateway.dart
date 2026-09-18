@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../../library/data/document_entry.dart';
@@ -64,29 +65,54 @@ class DeviceOfficeDocumentGateway implements OfficeDocumentGateway {
           'sizeBytes': document.sizeBytes,
         },
       );
-      final sessionId = response?['sessionId'] as String?;
-      final formatName = response?['format'] as String?;
-      final sizeBytes = (response?['sizeBytes'] as num?)?.toInt();
-      final format = switch (formatName) {
-        'docx' => DocumentFormat.docx,
-        'pptx' => DocumentFormat.pptx,
-        _ => null,
-      };
-      if (sessionId == null || format == null || sizeBytes == null) {
-        throw const OfficeDocumentException(
-          OfficeDocumentFailureKind.unreadable,
-          'Android returned an invalid Office rendering session.',
-        );
-      }
-      return OfficeDocumentSession(
-        id: sessionId,
-        format: format,
-        sizeBytes: sizeBytes,
-        close: () => _methodChannel.invokeMethod<void>(
+      final rawSessionId = response?['sessionId'];
+      final sessionId = rawSessionId is String && rawSessionId.isNotEmpty
+          ? rawSessionId
+          : null;
+      Future<void>? closing;
+      Future<void> closeSession() {
+        if (sessionId == null) {
+          return Future<void>.value();
+        }
+        return closing ??= _methodChannel.invokeMethod<void>(
           'closeDocument',
           <String, Object?>{'sessionId': sessionId},
-        ),
-      );
+        );
+      }
+
+      try {
+        final format = switch (response?['format']) {
+          'docx' => DocumentFormat.docx,
+          'pptx' => DocumentFormat.pptx,
+          _ => null,
+        };
+        final rawSize = response?['sizeBytes'];
+        final sizeBytes = rawSize is num && rawSize.isFinite
+            ? rawSize.toInt()
+            : null;
+        if (sessionId == null ||
+            format != document.format ||
+            sizeBytes == null ||
+            sizeBytes < 0) {
+          throw const OfficeDocumentException(
+            OfficeDocumentFailureKind.unreadable,
+            'Android returned an invalid Office rendering session.',
+          );
+        }
+        return OfficeDocumentSession(
+          id: sessionId,
+          format: document.format,
+          sizeBytes: sizeBytes,
+          close: closeSession,
+        );
+      } catch (_) {
+        try {
+          await closeSession();
+        } catch (error) {
+          debugPrint('Folio invalid Office session cleanup failed: $error');
+        }
+        rethrow;
+      }
     } on PlatformException catch (error) {
       final kind = switch (error.code) {
         'access_denied' => OfficeDocumentFailureKind.denied,

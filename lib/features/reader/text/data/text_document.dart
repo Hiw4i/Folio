@@ -57,15 +57,28 @@ class TextDocumentLoader {
 
   final DocumentContentSource source;
 
-  Future<TextDocument> load(DocumentEntry document) async {
+  Future<TextDocument> load(
+    DocumentEntry document, {
+    bool Function()? isCancelled,
+  }) async {
     final bytes = await source.read(document.source);
-    final transferable = TransferableTypedData.fromList(<Uint8List>[bytes]);
-    final payload = await Isolate.run<Map<String, Object?>>(
-      () => _decodeAndChunk(
-        transferable.materialize().asUint8List(),
-        document.format == DocumentFormat.markdown,
-      ),
-    );
+    if (isCancelled?.call() ?? false) {
+      throw const _CancelledTextLoad();
+    }
+    final markdown = document.format == DocumentFormat.markdown;
+    final Map<String, Object?> payload;
+    if (bytes.length <= 65536) {
+      payload = _decodeAndChunk(bytes, markdown);
+    } else {
+      final transferable = TransferableTypedData.fromList(<Uint8List>[bytes]);
+      payload = await Isolate.run<Map<String, Object?>>(
+        () =>
+            _decodeAndChunk(transferable.materialize().asUint8List(), markdown),
+      );
+    }
+    if (isCancelled?.call() ?? false) {
+      throw const _CancelledTextLoad();
+    }
     final rawChunks = payload['chunks']! as List<Object?>;
     return TextDocument(
       text: payload['text']! as String,
@@ -84,6 +97,10 @@ class TextDocumentLoader {
       ),
     );
   }
+}
+
+class _CancelledTextLoad implements Exception {
+  const _CancelledTextLoad();
 }
 
 Map<String, Object?> _decodeAndChunk(Uint8List bytes, bool markdown) {

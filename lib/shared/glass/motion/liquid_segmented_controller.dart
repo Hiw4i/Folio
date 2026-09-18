@@ -28,6 +28,34 @@ class LiquidSegmentedController extends LiquidMotionController {
   );
 
   final int _itemCount;
+  bool _liquidMotionEnabled = true;
+
+  bool get liquidMotionEnabled => _liquidMotionEnabled;
+
+  void setLiquidMotionEnabled(bool enabled) {
+    if (enabled == _liquidMotionEnabled) {
+      return;
+    }
+    _liquidMotionEnabled = enabled;
+    if (!enabled) {
+      stopSimulation();
+    }
+    _wake();
+    notifyListeners();
+  }
+
+  void _wake() {
+    if (_liquidMotionEnabled) {
+      wake();
+      return;
+    }
+    position = _target;
+    velocity = stretch = stretchVelocity = press = pressVelocity = 0;
+    _pointerSpeed = 0;
+    lightPosition = _lightTarget;
+    backdropScale = 1;
+  }
+
   MotionTokens _tokens = const MotionTokens.standard();
   double _target;
   bool _pointerDown = false;
@@ -63,7 +91,7 @@ class LiquidSegmentedController extends LiquidMotionController {
     _tokens = next;
     _maximumStretch = maximumStretch;
     stretch = math.min(stretch, maximumStretch);
-    wake();
+    _wake();
     notifyListeners();
   }
 
@@ -93,7 +121,7 @@ class LiquidSegmentedController extends LiquidMotionController {
       _dragGrabOffset = pointerPosition - this.position;
       _target = this.position.clamp(0.0, _itemCount - 1.0);
     }
-    wake();
+    _wake();
     notifyListeners();
   }
 
@@ -107,7 +135,7 @@ class LiquidSegmentedController extends LiquidMotionController {
       _lastItemExtent = itemExtent;
     }
     if (!_pointerDown || itemExtent <= 0) {
-      wake();
+      _wake();
       return;
     }
     final elapsedMicros = (timestamp - _lastPointerTime).inMicroseconds.clamp(
@@ -124,7 +152,7 @@ class LiquidSegmentedController extends LiquidMotionController {
       final pointerPosition = position.dx / itemExtent - 0.5;
       _selectTarget(pointerPosition - _dragGrabOffset, addImpulse: false);
     }
-    wake();
+    _wake();
     notifyListeners();
   }
 
@@ -134,6 +162,10 @@ class LiquidSegmentedController extends LiquidMotionController {
     required double itemExtent,
   }) {
     if (!_pointerDown) {
+      return targetIndex;
+    }
+    if (!itemExtent.isFinite || itemExtent <= 0) {
+      cancelPointer(targetIndex);
       return targetIndex;
     }
     movePointer(
@@ -148,7 +180,7 @@ class LiquidSegmentedController extends LiquidMotionController {
     _pointerDown = false;
     _draggingLens = false;
     _selectTarget(selected.toDouble(), addImpulse: true);
-    wake();
+    _wake();
     notifyListeners();
     return selected;
   }
@@ -161,13 +193,13 @@ class LiquidSegmentedController extends LiquidMotionController {
     _draggingLens = false;
     _pointerSpeed = 0;
     _selectTarget(selectedIndex.toDouble(), addImpulse: false);
-    wake();
+    _wake();
     notifyListeners();
   }
 
   void updateHover(Offset position) {
     _lightTarget = position;
-    wake();
+    _wake();
   }
 
   void _selectTarget(double target, {required bool addImpulse}) {
@@ -180,22 +212,29 @@ class LiquidSegmentedController extends LiquidMotionController {
     if (addImpulse && _maximumStretch > 0.1) {
       stretchVelocity += math.min(7.5, 1.8 + travel * 1.15);
     }
-    wake();
+    _wake();
+    if (!_liquidMotionEnabled) {
+      notifyListeners();
+    }
   }
 
   @override
   bool get isAtRest =>
-      (position - _target).abs() < 0.001 &&
-      velocity.abs() < 0.01 &&
-      stretch < 0.002 &&
-      stretchVelocity.abs() < 0.01 &&
-      press < 0.002 &&
-      pressVelocity.abs() < 0.01 &&
-      (backdropScale - 1.0).abs() < LiquidBackdropAdapt.settleBand &&
-      (!_pointerDown && (lightPosition - _lightTarget).distance < 0.05);
+      !_liquidMotionEnabled ||
+      ((position - _target).abs() < 0.001 &&
+          velocity.abs() < 0.01 &&
+          stretch < 0.002 &&
+          stretchVelocity.abs() < 0.01 &&
+          press < 0.002 &&
+          pressVelocity.abs() < 0.01 &&
+          (backdropScale - 1.0).abs() < LiquidBackdropAdapt.settleBand &&
+          (!_pointerDown && (lightPosition - _lightTarget).distance < 0.05));
 
   @override
   void integrate(double dt) {
+    if (!_liquidMotionEnabled) {
+      return;
+    }
     final movement = LiquidSpring.scalar(
       position: position,
       velocity: velocity,

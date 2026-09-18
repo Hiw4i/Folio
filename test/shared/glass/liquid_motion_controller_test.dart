@@ -23,7 +23,9 @@ void main() {
 }
 
 class _CountingMotion extends LiquidMotionController {
-  _CountingMotion({required super.vsync});
+  _CountingMotion({required super.vsync}) {
+    wake();
+  }
 
   int steps = 0;
 

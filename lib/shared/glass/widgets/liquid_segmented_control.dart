@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../settings/folio_settings_scope.dart';
+
 import '../../theme/folio_theme.dart';
 import '../core/glass_geometry.dart';
 import '../core/liquid_shape.dart';
@@ -67,6 +69,9 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _motion.setLiquidMotionEnabled(
+      FolioSettingsScope.liquidMotionEnabledOf(context),
+    );
     _motion.setReducedMotion(MediaQuery.disableAnimationsOf(context));
   }
 

@@ -22,26 +22,57 @@ class IsolateDocumentScanner implements DocumentScanner {
 
   @override
   Stream<DocumentScanBatch> scan(List<String> roots) {
+    if (batchSize <= 0) {
+      throw ArgumentError.value(batchSize, 'batchSize', 'Must be positive');
+    }
     ReceivePort? receivePort;
     Isolate? isolate;
-    StreamSubscription<Object?>? messageSubscription;
+    StreamSubscription<Object?>? messages;
+    bool cancelled = false;
+    bool finished = false;
     late final StreamController<DocumentScanBatch> controller;
 
-    Future<void> close() async {
+    Future<void> cleanup() async {
       isolate?.kill(priority: Isolate.immediate);
       isolate = null;
-      await messageSubscription?.cancel();
       receivePort?.close();
       receivePort = null;
+      final subscription = messages;
+      messages = null;
+      await subscription?.cancel();
     }
 
-    controller = StreamController<DocumentScanBatch>(
-      onListen: () async {
-        receivePort = ReceivePort();
-        messageSubscription = receivePort!.listen((message) async {
-          if (message is! Map) {
-            return;
-          }
+    void finish([Object? error, StackTrace? stack]) {
+      if (cancelled || finished) {
+        return;
+      }
+      finished = true;
+      if (error != null) {
+        controller.addError(error, stack);
+      }
+      unawaited(controller.close());
+      unawaited(cleanup());
+    }
+
+    Future<void> start() async {
+      final port = ReceivePort();
+      receivePort = port;
+      messages = port.listen((Object? message) {
+        if (cancelled || finished) {
+          return;
+        }
+        if (message == null) {
+          finish(StateError('Document scan isolate exited before completion.'));
+          return;
+        }
+        if (message is List) {
+          finish(StateError('Document scan isolate failed: ${message.first}'));
+          return;
+        }
+        if (message is! Map) {
+          return;
+        }
+        try {
           switch (message['type']) {
             case 'batch':
               final rawDocuments = message['documents'];
@@ -58,7 +89,7 @@ class IsolateDocumentScanner implements DocumentScanner {
                 );
               }
             case 'error':
-              controller.addError(
+              finish(
                 FileSystemException(
                   message['message'] as String? ?? 'Document scan failed.',
                 ),
@@ -70,29 +101,42 @@ class IsolateDocumentScanner implements DocumentScanner {
                   isComplete: true,
                 ),
               );
-              isolate = null;
-              receivePort?.close();
-              receivePort = null;
-              await controller.close();
+              finish();
           }
-        });
-        try {
-          isolate = await Isolate.spawn<Map<String, Object?>>(
-            _scanInIsolate,
-            <String, Object?>{
-              'port': receivePort!.sendPort,
-              'roots': List<String>.of(roots),
-              'batchSize': batchSize,
-            },
-            debugName: 'folio-document-scan',
-          );
-        } catch (error, stackTrace) {
-          controller.addError(error, stackTrace);
-          await close();
-          await controller.close();
+        } catch (error, stack) {
+          finish(error, stack);
         }
+      });
+      try {
+        final worker = await Isolate.spawn<Map<String, Object?>>(
+          _scanInIsolate,
+          <String, Object?>{
+            'port': port.sendPort,
+            'roots': List<String>.of(roots),
+            'batchSize': batchSize,
+          },
+          onError: port.sendPort,
+          onExit: port.sendPort,
+          errorsAreFatal: true,
+          debugName: 'folio-document-scan',
+        );
+        // Cancellation can happen while spawn is still awaiting its handle.
+        if (cancelled || finished) {
+          worker.kill(priority: Isolate.immediate);
+        } else {
+          isolate = worker;
+        }
+      } catch (error, stack) {
+        finish(error, stack);
+      }
+    }
+
+    controller = StreamController<DocumentScanBatch>(
+      onListen: () => unawaited(start()),
+      onCancel: () async {
+        cancelled = true;
+        await cleanup();
       },
-      onCancel: close,
     );
     return controller.stream;
   }
@@ -117,24 +161,27 @@ Future<void> _scanInIsolate(Map<String, Object?> arguments) async {
 
   try {
     final directories = <Directory>[for (final root in roots) Directory(root)];
+    final visited = <String>{};
     while (directories.isNotEmpty) {
       final directory = directories.removeLast();
-      if (_isExcludedAndroidDirectory(directory.path)) {
+      final normalizedPath = directory.absolute.uri
+          .normalizePath()
+          .toFilePath();
+      if (!visited.add(normalizedPath) ||
+          _isExcludedAndroidDirectory(directory.path)) {
         continue;
       }
       try {
         await for (final entity in directory.list(followLinks: false)) {
-          final type = await FileSystemEntity.type(
-            entity.path,
-            followLinks: false,
-          );
-          if (type == FileSystemEntityType.directory) {
+          // Directory.list already reports entity types. Avoid an additional
+          // filesystem call for every file, directory and unsupported asset.
+          if (entity is Directory) {
             if (!_isExcludedAndroidDirectory(entity.path)) {
               directories.add(Directory(entity.path));
             }
             continue;
           }
-          if (type != FileSystemEntityType.file) {
+          if (entity is! File) {
             continue;
           }
           final name = _fileName(entity.path);

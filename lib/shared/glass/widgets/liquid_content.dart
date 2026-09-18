@@ -44,10 +44,7 @@ abstract final class LiquidContent {
     if (sigma <= 0.01) {
       return child;
     }
-    return ImageFiltered(
-      imageFilter: softeningFilterFor(sigma),
-      child: child,
-    );
+    return ImageFiltered(imageFilter: softeningFilterFor(sigma), child: child);
   }
 
   /// Motion blur is visually insensitive to a tenth-pixel step, while the

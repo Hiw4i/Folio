@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+
+import '../../settings/folio_settings_scope.dart';
 
 import '../core/glass_geometry.dart';
 import '../core/glass_tokens.dart';
@@ -49,6 +52,7 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   bool _reducedMotion = false;
   bool _wasExpanded = false;
   bool _reportedExpanded = false;
+  bool _focusSyncScheduled = false;
 
   bool get isExpanded => _motion.wantsOpen || _motion.morph > 0.02;
 
@@ -73,6 +77,9 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _motion.setLiquidMotionEnabled(
+      FolioSettingsScope.liquidMotionEnabledOf(context),
+    );
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     if (reducedMotion != _reducedMotion) {
       _reducedMotion = reducedMotion;
@@ -91,6 +98,22 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   }
 
   void _syncFocus() {
+    // A settings dependency can snap a closing spring while this subtree is
+    // building. Clearing its query may rebuild an ancestor catalog/reader;
+    // defer only that build-phase side effect, not ordinary animation ticks.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (!_focusSyncScheduled) {
+        _focusSyncScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _focusSyncScheduled = false;
+          if (mounted) {
+            _syncFocus();
+          }
+        });
+      }
+      return;
+    }
     if (_reportedExpanded != _motion.wantsOpen) {
       _reportedExpanded = _motion.wantsOpen;
       widget.onExpansionChanged?.call(_reportedExpanded);
@@ -122,6 +145,9 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
     }
     _searchFocus.requestFocus();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_motion.wantsOpen) {
+        return;
+      }
       _showKeyboardIfReady();
       _keyboardRetry?.cancel();
       _keyboardRetry = Timer(

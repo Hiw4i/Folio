@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../library/data/document_entry.dart';
 import '../../logic/document_renderer_contract.dart';
 import '../../logic/reader_state.dart';
+import '../../logic/renderer_lifecycle.dart';
 import '../data/office_document_gateway.dart';
 
 abstract class OfficeDocumentRendererBase extends ChangeNotifier
@@ -31,6 +32,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   OfficeDocumentSession? _session;
   OfficeViewCommands? _view;
   int _generation = 0;
+  int _commandRevision = 0;
   bool _disposed = false;
   bool _viewReady = false;
 
@@ -53,6 +55,10 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
 
   @override
   Future<void> open() async {
+    if (_disposed) {
+      return;
+    }
+    _commandRevision += 1;
     final generation = ++_generation;
     final previous = _session;
     _session = null;
@@ -69,13 +75,16 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     searchableTextAvailable = null;
     notifyListeners();
     if (previous != null) {
-      await previous.close();
+      await closeReaderResource(previous.close);
     }
 
+    if (_disposed || generation != _generation) {
+      return;
+    }
     try {
       final prepared = await gateway.prepare(document);
       if (_disposed || generation != _generation) {
-        await prepared.close();
+        await closeReaderResource(prepared.close);
         return;
       }
       _session = prepared;
@@ -129,8 +138,9 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
           positionCount.clamp(1, 1 << 30),
         );
         notifyListeners();
-        if (query.trim().isNotEmpty) {
-          unawaited(_view?.search(query));
+        final view = _view;
+        if (query.trim().isNotEmpty && view != null) {
+          unawaited(_runViewCommand(view, () => view.search(query)));
         }
       case 'position':
         final nextCount = (event['count'] as num?)?.toInt() ?? positionCount;
@@ -162,6 +172,10 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
 
   @override
   Future<void> search(String value) async {
+    if (_disposed) {
+      return;
+    }
+    _commandRevision += 1;
     query = value;
     activeHitIndex = -1;
     hitCount = 0;
@@ -169,7 +183,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     notifyListeners();
     final view = _view;
     if (_viewReady && view != null) {
-      await view.search(value);
+      await _runViewCommand(view, () => view.search(value));
     } else if (value.trim().isEmpty) {
       isSearching = false;
       notifyListeners();
@@ -178,15 +192,37 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
 
   @override
   void showNextHit() {
-    if (_viewReady && hitCount > 0) {
-      unawaited(_view?.showNextHit());
+    final view = _view;
+    if (!_disposed && _viewReady && hitCount > 0 && view != null) {
+      unawaited(_runViewCommand(view, view.showNextHit));
     }
   }
 
   @override
   void showPreviousHit() {
-    if (_viewReady && hitCount > 0) {
-      unawaited(_view?.showPreviousHit());
+    final view = _view;
+    if (!_disposed && _viewReady && hitCount > 0 && view != null) {
+      unawaited(_runViewCommand(view, view.showPreviousHit));
+    }
+  }
+
+  Future<void> _runViewCommand(
+    OfficeViewCommands view,
+    Future<void> Function() command,
+  ) async {
+    final revision = _commandRevision;
+    try {
+      await command();
+    } catch (error) {
+      debugPrint('Folio Office view command failed: $error');
+      if (!_disposed &&
+          identical(view, _view) &&
+          revision == _commandRevision) {
+        // Search/navigation failure must not replace a readable document
+        // with an error page or leave the search indicator spinning forever.
+        isSearching = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -228,12 +264,13 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   @override
   Future<void> close() async {
     _generation += 1;
+    _commandRevision += 1;
     _view = null;
     _viewReady = false;
     final session = _session;
     _session = null;
     if (session != null) {
-      await session.close();
+      await closeReaderResource(session.close);
     }
   }
 
@@ -241,11 +278,12 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   void dispose() {
     _disposed = true;
     _generation += 1;
+    _commandRevision += 1;
     _view = null;
     final session = _session;
     _session = null;
     if (session != null) {
-      unawaited(session.close());
+      unawaited(closeReaderResource(session.close));
     }
     super.dispose();
   }

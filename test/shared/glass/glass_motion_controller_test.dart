@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:folio/shared/glass/core/glass_geometry.dart';
 
 import 'package:folio/shared/glass/motion/glass_motion_controller.dart';
+
 void main() {
   test('the fixed-step springs settle open and closed', () {
     final motion = GlassMotionController();

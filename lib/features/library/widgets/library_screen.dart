@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:animations/animations.dart';
 import 'package:flutter/widgets.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/theme/folio_theme.dart';
@@ -9,6 +10,7 @@ import '../../../shared/widgets/scroll_edge_fade.dart';
 import '../../reader/data/document_content_source.dart';
 import '../../reader/logic/reader_preloader.dart';
 import '../../reader/widgets/reader_screen.dart';
+import '../../settings/widgets/folio_settings_sheet.dart';
 import '../data/document_entry.dart';
 import '../data/library_repository.dart';
 import '../logic/library_controller.dart';
@@ -34,6 +36,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
   bool _readerOpen = false;
+  bool _settingsOpen = false;
 
   @override
   void initState() {
@@ -41,8 +44,24 @@ class _LibraryScreenState extends State<LibraryScreen>
     WidgetsBinding.instance.addObserver(this);
     widget.controller.addListener(_openPendingDocument);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.controller.load();
+      if (mounted) {
+        unawaited(widget.controller.load());
+      }
     });
+  }
+
+  @override
+  void didUpdateWidget(LibraryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.removeListener(_openPendingDocument);
+      widget.controller.addListener(_openPendingDocument);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(widget.controller.load());
+        }
+      });
+    }
   }
 
   @override
@@ -50,11 +69,12 @@ class _LibraryScreenState extends State<LibraryScreen>
     WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_openPendingDocument);
     _scrollController.dispose();
+    ReaderPreloader.clear();
     super.dispose();
   }
 
   void _openPendingDocument() {
-    if (_readerOpen) {
+    if (!mounted || _readerOpen || _settingsOpen) {
       return;
     }
     final document = widget.controller.takePendingDocument();
@@ -95,10 +115,49 @@ class _LibraryScreenState extends State<LibraryScreen>
     });
   }
 
+  bool _beginReaderOpen() {
+    if (!mounted || _readerOpen || _settingsOpen) {
+      return false;
+    }
+    _readerOpen = true;
+    return true;
+  }
+
+  void _readerClosed() {
+    if (!mounted) {
+      return;
+    }
+    _readerOpen = false;
+    _openPendingDocument();
+  }
+
+  Future<void> _openSettings() async {
+    if (_settingsOpen || _readerOpen) {
+      return;
+    }
+    _settingsOpen = true;
+    try {
+      await showFolioSettingsSheet(context);
+    } finally {
+      _settingsOpen = false;
+      if (mounted) {
+        _openPendingDocument();
+      }
+    }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    ReaderPreloader.clear();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(widget.controller.refresh());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      ReaderPreloader.clear();
     }
   }
 
@@ -107,6 +166,16 @@ class _LibraryScreenState extends State<LibraryScreen>
     final media = MediaQuery.of(context);
     return AnimatedBuilder(
       animation: widget.controller,
+      child: Positioned(
+        left: 0,
+        right: 0,
+        bottom: media.viewInsets.bottom,
+        height: LiquidSearchControlState.height + media.viewPadding.bottom,
+        child: LiquidSearchControl(
+          key: const ValueKey<String>('library_search'),
+          onChanged: widget.controller.updateQuery,
+        ),
+      ),
       builder: (context, child) => PopScope<void>(
         canPop: widget.controller.unavailableDocument == null,
         onPopInvokedWithResult: (didPop, result) {
@@ -125,18 +194,11 @@ class _LibraryScreenState extends State<LibraryScreen>
                 controller: widget.controller,
                 scrollController: _scrollController,
                 documentContentSource: widget.documentContentSource,
+                onOpenSettings: _openSettings,
+                onBeginOpen: _beginReaderOpen,
+                onReaderClosed: _readerClosed,
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: media.viewInsets.bottom,
-                height:
-                    LiquidSearchControlState.height + media.viewPadding.bottom,
-                child: LiquidSearchControl(
-                  key: const ValueKey<String>('library_search'),
-                  onChanged: widget.controller.updateQuery,
-                ),
-              ),
+              child!,
               if (widget.controller.unavailableDocument case final document?)
                 _UnavailableRecovery(
                   document: document,
@@ -157,10 +219,16 @@ class _LibraryContent extends StatelessWidget {
     required this.controller,
     required this.scrollController,
     required this.documentContentSource,
+    required this.onOpenSettings,
+    required this.onBeginOpen,
+    required this.onReaderClosed,
   });
 
   final LibraryController controller;
   final ScrollController scrollController;
+  final VoidCallback onOpenSettings;
+  final bool Function() onBeginOpen;
+  final VoidCallback onReaderClosed;
   final DocumentContentSource documentContentSource;
 
   @override
@@ -181,7 +249,31 @@ class _LibraryContent extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
-                  const Expanded(child: Text('Folio', style: FolioText.title)),
+                  Expanded(
+                    child: Row(
+                      children: <Widget>[
+                        const Flexible(
+                          child: Text(
+                            'Folio',
+                            style: FolioText.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        LiquidGlassControl(
+                          key: const ValueKey<String>('library_settings'),
+                          size: const Size.square(36),
+                          semanticsLabel: 'Settings',
+                          onTap: onOpenSettings,
+                          child: const AdaptiveGlassIcon(
+                            LucideIcons.settings,
+                            size: 19,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   if (controller.loadState == LibraryLoadState.ready)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 3),
@@ -250,6 +342,8 @@ class _LibraryContent extends StatelessWidget {
                 documents: recent,
                 controller: controller,
                 documentContentSource: documentContentSource,
+                onBeginOpen: onBeginOpen,
+                onReaderClosed: onReaderClosed,
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 23)),
             ],
@@ -262,6 +356,8 @@ class _LibraryContent extends StatelessWidget {
                 documents: documents,
                 controller: controller,
                 documentContentSource: documentContentSource,
+                onBeginOpen: onBeginOpen,
+                onReaderClosed: onReaderClosed,
               ),
             ],
             SliverToBoxAdapter(
@@ -283,40 +379,55 @@ class _DocumentSliver extends StatelessWidget {
     required this.documents,
     required this.controller,
     required this.documentContentSource,
+    required this.onBeginOpen,
+    required this.onReaderClosed,
   });
 
   final List<DocumentEntry> documents;
   final LibraryController controller;
   final DocumentContentSource documentContentSource;
+  final bool Function() onBeginOpen;
+  final VoidCallback onReaderClosed;
 
   @override
   Widget build(BuildContext context) {
+    final indexById = <String, int>{
+      for (var i = 0; i < documents.length; i++) documents[i].id: i,
+    };
     return SliverList(
-      delegate: SliverChildBuilderDelegate((context, index) {
-        final document = documents[index];
-        return Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: Column(
-              children: <Widget>[
-                _DocumentOpenContainer(
-                  document: document,
-                  controller: controller,
-                  documentContentSource: documentContentSource,
-                ),
-                if (index < documents.length - 1)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 82, right: 20),
-                    child: SizedBox(
-                      height: 0.8,
-                      child: ColoredBox(color: FolioColors.separator),
-                    ),
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final document = documents[index];
+          return Center(
+            key: ValueKey<String>(document.id),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                children: <Widget>[
+                  _DocumentOpenContainer(
+                    document: document,
+                    controller: controller,
+                    documentContentSource: documentContentSource,
+                    onBeginOpen: onBeginOpen,
+                    onReaderClosed: onReaderClosed,
                   ),
-              ],
+                  if (index < documents.length - 1)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 82, right: 20),
+                      child: SizedBox(
+                        height: 0.8,
+                        child: ColoredBox(color: FolioColors.separator),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        );
-      }, childCount: documents.length),
+          );
+        },
+        childCount: documents.length,
+        findChildIndexCallback: (key) =>
+            key is ValueKey<String> ? indexById[key.value] : null,
+      ),
     );
   }
 }
@@ -326,11 +437,15 @@ class _DocumentOpenContainer extends StatelessWidget {
     required this.document,
     required this.controller,
     required this.documentContentSource,
+    required this.onBeginOpen,
+    required this.onReaderClosed,
   });
 
   final DocumentEntry document;
   final LibraryController controller;
   final DocumentContentSource documentContentSource;
+  final bool Function() onBeginOpen;
+  final VoidCallback onReaderClosed;
 
   @override
   Widget build(BuildContext context) {
@@ -366,7 +481,15 @@ class _DocumentOpenContainer extends StatelessWidget {
             unawaited(controller.markOpened(document));
             return;
           }
-          openContainer();
+          if (!onBeginOpen()) {
+            return;
+          }
+          try {
+            openContainer();
+          } catch (_) {
+            onReaderClosed();
+            rethrow;
+          }
           // Updating Recents can move this row into another sliver. Wait until
           // the source container has finished morphing before rebuilding it.
           if (reducedMotion) {
@@ -382,12 +505,16 @@ class _DocumentOpenContainer extends StatelessWidget {
         },
       ),
       openBuilder: (context, closeContainer) {
-        final primed = ReaderPreloader.adopt(document);
+        final primed = ReaderPreloader.adopt(
+          document,
+          contentSource: documentContentSource,
+        );
         return ReaderScreen(
           document: document,
           contentSource: documentContentSource,
           deferInitialLoad: primed == null && !reducedMotion,
           initialRenderer: primed,
+          onDisposed: onReaderClosed,
           onRemoveFromRecents: () => controller.removeFromRecents(document),
         );
       },
@@ -525,47 +652,47 @@ class _UnavailableRecovery extends StatelessWidget {
                     borderRadius: 28,
                     padding: const EdgeInsets.fromLTRB(22, 22, 22, 12),
                     child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Text(
-                        'File access expired',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          color: FolioColors.textPrimary,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w600,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Text(
+                          'File access expired',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            color: FolioColors.textPrimary,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Folio can no longer reach “${document.name}”. Select it again or remove it from Recents.',
-                        textAlign: TextAlign.center,
-                        style: FolioText.metadata,
-                      ),
-                      const SizedBox(height: 4),
-                      LiquidGlassButton(
-                        label: 'Grant access again',
-                        width: 190,
-                        height: 50,
-                        onTap: onRecover,
-                      ),
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: onRemove,
-                        child: const Padding(
-                          padding: EdgeInsets.fromLTRB(16, 9, 16, 15),
-                          child: Text(
-                            'Remove from Recents',
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              color: FolioColors.textSecondary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                        const SizedBox(height: 8),
+                        Text(
+                          'Folio can no longer reach “${document.name}”. Select it again or remove it from Recents.',
+                          textAlign: TextAlign.center,
+                          style: FolioText.metadata,
+                        ),
+                        const SizedBox(height: 4),
+                        LiquidGlassButton(
+                          label: 'Grant access again',
+                          width: 190,
+                          height: 50,
+                          onTap: onRecover,
+                        ),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onRemove,
+                          child: const Padding(
+                            padding: EdgeInsets.fromLTRB(16, 9, 16, 15),
+                            child: Text(
+                              'Remove from Recents',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                color: FolioColors.textSecondary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
                     ),
                   ),
                 ),

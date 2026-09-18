@@ -8,6 +8,7 @@ import '../../../library/data/document_entry.dart';
 import '../../data/document_content_source.dart';
 import '../../logic/document_renderer_contract.dart';
 import '../../logic/reader_state.dart';
+import '../../logic/renderer_lifecycle.dart';
 
 class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   PdfDocumentRenderer({required this.document, required this.contentSource});
@@ -39,6 +40,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   bool _navigationRunning = false;
   bool _disposed = false;
   bool _probingText = false;
+  int _textProbeRevision = 0;
 
   int currentPage = 1;
   int pageCount = 0;
@@ -63,6 +65,9 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
 
   @override
   Future<void> open() async {
+    if (_disposed) {
+      return;
+    }
     final generation = ++_generation;
     final previousSource = _preparedSource;
     _detachViewer();
@@ -81,13 +86,16 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     notifyListeners();
     if (previousSource != null) {
       await Future<void>.delayed(Duration.zero);
-      await previousSource.close();
+      await closeReaderResource(previousSource.close);
     }
 
+    if (_disposed || generation != _generation) {
+      return;
+    }
     try {
       final prepared = await contentSource.preparePdf(document.source);
       if (_disposed || generation != _generation) {
-        await prepared.close();
+        await closeReaderResource(prepared.close);
         return;
       }
       _preparedSource = prepared;
@@ -159,7 +167,9 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     _viewerController = controller;
     _textSearcher = PdfTextSearcher(controller)..addListener(_searchChanged);
     pageCount = openedDocument.pages.length;
-    currentPage = controller.pageNumber?.clamp(1, pageCount) ?? 1;
+    currentPage = pageCount > 0
+        ? (controller.pageNumber ?? 1).clamp(1, pageCount)
+        : 1;
     loadState = ReaderLoadState.ready;
     failure = null;
     notifyListeners();
@@ -190,7 +200,10 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   }
 
   void pageChanged(int? pageNumber) {
-    if (pageNumber == null || pageNumber == currentPage || pageCount <= 0) {
+    if (_disposed ||
+        pageNumber == null ||
+        pageNumber == currentPage ||
+        pageCount <= 0) {
       return;
     }
     currentPage = pageNumber.clamp(1, pageCount);
@@ -239,10 +252,13 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
       return;
     }
     _probingText = true;
+    final probeRevision = _textProbeRevision;
     try {
       final hasText = await controller.useDocument((pdf) async {
         for (final page in pdf.pages) {
-          if (_disposed || generation != _generation) {
+          if (_disposed ||
+              generation != _generation ||
+              probeRevision != _textProbeRevision) {
             return null;
           }
           final pageText = await searcher.loadText(pageNumber: page.pageNumber);
@@ -252,17 +268,29 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
         }
         return false;
       });
-      if (!_disposed && generation == _generation && hasText != null) {
+      if (!_disposed &&
+          generation == _generation &&
+          probeRevision == _textProbeRevision &&
+          hasText != null) {
         searchableTextAvailable = hasText;
         notifyListeners();
       }
+    } catch (error) {
+      // A released viewer or damaged text layer is not an unhandled task
+      // failure, and it does not prove that the PDF contains no text.
+      debugPrint('Folio PDF text availability check failed: $error');
     } finally {
-      _probingText = false;
+      if (probeRevision == _textProbeRevision) {
+        _probingText = false;
+      }
     }
   }
 
   @override
   Future<void> search(String value) async {
+    if (_disposed) {
+      return;
+    }
     _searchRevision += 1;
     _requestedHitIndex = null;
     query = value;
@@ -406,6 +434,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   }
 
   void _detachViewer() {
+    _textProbeRevision += 1;
     _cancelPdfNavigation();
     _viewerController = null;
     _textSearcher
@@ -424,7 +453,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     _preparedSource = null;
     if (source != null) {
       await Future<void>.delayed(Duration.zero);
-      await source.close();
+      await closeReaderResource(source.close);
     }
   }
 
@@ -436,7 +465,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     final source = _preparedSource;
     _preparedSource = null;
     if (source != null) {
-      unawaited(source.close());
+      unawaited(closeReaderResource(source.close));
     }
     super.dispose();
   }

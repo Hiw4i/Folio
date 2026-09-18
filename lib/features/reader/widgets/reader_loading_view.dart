@@ -66,10 +66,11 @@ class _ReaderLoadingViewState extends State<ReaderLoadingView> {
       return;
     }
     final effectiveGrace = switch (widget.document.format) {
-      DocumentFormat.txt || DocumentFormat.markdown =>
-        ReaderLoadingView.textGrace,
-      DocumentFormat.pdf || DocumentFormat.docx || DocumentFormat.pptx =>
-        ReaderLoadingView.grace,
+      DocumentFormat.txt ||
+      DocumentFormat.markdown => ReaderLoadingView.textGrace,
+      DocumentFormat.pdf ||
+      DocumentFormat.docx ||
+      DocumentFormat.pptx => ReaderLoadingView.grace,
     };
     _graceTimer = Timer(effectiveGrace, () {
       if (mounted) {

@@ -28,6 +28,8 @@ class OfficeDocumentPlatformView extends StatefulWidget {
 class _OfficeDocumentPlatformViewState
     extends State<OfficeDocumentPlatformView> {
   _MethodChannelOfficeView? _controller;
+  OfficeDocumentRendererBase? _attachedRenderer;
+  String? _attachedSessionId;
 
   @override
   void didUpdateWidget(OfficeDocumentPlatformView oldWidget) {
@@ -37,26 +39,51 @@ class _OfficeDocumentPlatformViewState
     }
   }
 
-  void _platformViewCreated(int viewId) {
-    _detach();
-    final session = widget.renderer.session;
-    if (session == null) {
+  void _platformViewCreated(
+    int viewId,
+    OfficeDocumentRendererBase renderer,
+    String sessionId,
+  ) {
+    // Android view creation can finish after a route/session was replaced.
+    if (!mounted ||
+        !identical(renderer, widget.renderer) ||
+        renderer.session?.id != sessionId) {
       return;
     }
-    final controller = _MethodChannelOfficeView(
+    _detach();
+    late final _MethodChannelOfficeView controller;
+    controller = _MethodChannelOfficeView(
       viewId: viewId,
-      onEvent: _handleEvent,
+      onEvent: (event) => _handleEvent(controller, event),
     );
     _controller = controller;
-    widget.renderer.attachView(controller, session.id);
-    unawaited(controller.start());
+    _attachedRenderer = renderer;
+    _attachedSessionId = sessionId;
+    renderer.attachView(controller, sessionId);
+    unawaited(
+      controller.start().catchError((Object error) {
+        _handleEvent(controller, <Object?, Object?>{
+          'type': 'error',
+          'message': 'The Android Office view could not be started.',
+          'recoverable': true,
+        });
+      }),
+    );
   }
 
-  void _handleEvent(Map<Object?, Object?> event) {
-    if (!mounted) {
+  void _handleEvent(
+    _MethodChannelOfficeView controller,
+    Map<Object?, Object?> event,
+  ) {
+    final renderer = _attachedRenderer;
+    if (!mounted ||
+        !identical(controller, _controller) ||
+        renderer == null ||
+        !identical(renderer, widget.renderer) ||
+        renderer.session?.id != _attachedSessionId) {
       return;
     }
-    widget.renderer.handleViewEvent(event);
+    renderer.handleViewEvent(event);
     switch (event['type']) {
       case 'tap':
         widget.onContentTap();
@@ -70,9 +97,13 @@ class _OfficeDocumentPlatformViewState
 
   void _detach() {
     final controller = _controller;
+    final renderer = _attachedRenderer;
     _controller = null;
+    _attachedRenderer = null;
+    _attachedSessionId = null;
     if (controller != null) {
-      widget.renderer.detachView(controller);
+      // Detach from its actual owner, not the newly supplied widget.renderer.
+      renderer?.detachView(controller);
       controller.dispose();
     }
   }
@@ -85,7 +116,8 @@ class _OfficeDocumentPlatformViewState
 
   @override
   Widget build(BuildContext context) {
-    final session = widget.renderer.session;
+    final renderer = widget.renderer;
+    final session = renderer.session;
     if (!Platform.isAndroid || session == null) {
       return const SizedBox.shrink();
     }
@@ -97,7 +129,8 @@ class _OfficeDocumentPlatformViewState
         creationParams: <String, Object?>{'sessionId': session.id},
         creationParamsCodec: const StandardMessageCodec(),
         hitTestBehavior: PlatformViewHitTestBehavior.opaque,
-        onPlatformViewCreated: _platformViewCreated,
+        onPlatformViewCreated: (viewId) =>
+            _platformViewCreated(viewId, renderer, session.id),
       ),
     );
   }

@@ -4,6 +4,9 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
+
+import '../../../shared/persistence/atomic_file.dart';
 
 import '../../../shared/android/android_storage_gateway.dart';
 import 'document_entry.dart';
@@ -30,19 +33,18 @@ class FileLibraryRepository implements LibraryRepository {
   final CacheDirectoryProvider _cacheDirectoryProvider;
   final DateTime Function() _now;
   final Map<String, DocumentEntry> _documents = <String, DocumentEntry>{};
-  Future<void> _writeQueue = Future<void>.value();
-  bool _loaded = false;
+  Future<void>? _cacheLoading;
+  Future<void>? _writeQueue;
+  bool _writeRequested = false;
+  Object? lastCacheWriteError;
   bool _disposed = false;
   LibraryAccess _access = LibraryAccess.denied;
 
   @override
   Future<LibrarySnapshot> load() async {
-    if (!_loaded) {
-      _loaded = true;
-      final cached = await _readCache();
-      _documents
-        ..clear()
-        ..addEntries(cached.map((item) => MapEntry(item.id, item)));
+    await _loadCachedDocuments();
+    if (_disposed) {
+      return _snapshot();
     }
     try {
       _access = await storageGateway.hasAllFilesAccess()
@@ -52,6 +54,20 @@ class FileLibraryRepository implements LibraryRepository {
       _access = LibraryAccess.denied;
     }
     return _snapshot();
+  }
+
+  Future<void> _loadCachedDocuments() => _cacheLoading ??= _loadCache();
+
+  Future<void> _loadCache() async {
+    final cached = await _readCache();
+    if (_disposed) {
+      return;
+    }
+    // Shared initialization prevents a concurrent intent/refresh from clearing
+    // newly registered entries with a late disk snapshot.
+    for (final document in cached) {
+      _documents.putIfAbsent(document.id, () => document);
+    }
   }
 
   @override
@@ -72,6 +88,8 @@ class FileLibraryRepository implements LibraryRepository {
 
     final scannedIds = <String>{};
     var receivedComplete = false;
+    final publishClock = Stopwatch()..start();
+    var lastPublishedAt = -80;
     await for (final batch in scanner.scan(
       roots.map((root) => root.path).toList(growable: false),
     )) {
@@ -86,7 +104,9 @@ class FileLibraryRepository implements LibraryRepository {
           isAvailable: true,
         );
       }
-      if (batch.documents.isNotEmpty) {
+      if (batch.documents.isNotEmpty &&
+          publishClock.elapsedMilliseconds - lastPublishedAt >= 80) {
+        lastPublishedAt = publishClock.elapsedMilliseconds;
         yield _snapshot();
       }
       receivedComplete = receivedComplete || batch.isComplete;
@@ -135,7 +155,14 @@ class FileLibraryRepository implements LibraryRepository {
 
   @override
   Future<DocumentEntry> markOpened(DocumentEntry document) async {
-    final opened = document.copyWith(lastOpenedAt: _now(), isAvailable: true);
+    await _loadCachedDocuments();
+    if (_disposed) {
+      return document;
+    }
+    final opened = (_documents[document.id] ?? document).copyWith(
+      lastOpenedAt: _now(),
+      isAvailable: true,
+    );
     _documents[opened.id] = opened;
     await _persist();
     return opened;
@@ -152,7 +179,7 @@ class FileLibraryRepository implements LibraryRepository {
       displayName: document.name,
       mimeType: _mimeTypeFor(document.format),
     );
-    if (incoming == null) {
+    if (incoming == null || _disposed) {
       return null;
     }
     final replacement = _entryFromIncoming(incoming)
@@ -168,15 +195,25 @@ class FileLibraryRepository implements LibraryRepository {
 
   @override
   Future<void> removeFromRecents(DocumentEntry document) async {
+    await _loadCachedDocuments();
+    if (_disposed) {
+      return;
+    }
     if (document.source is UriDocumentSource || !document.isAvailable) {
       _documents.remove(document.id);
     } else {
-      _documents[document.id] = document.copyWith(lastOpenedAt: null);
+      _documents[document.id] = (_documents[document.id] ?? document).copyWith(
+        lastOpenedAt: null,
+      );
     }
     await _persist();
   }
 
   Future<DocumentEntry?> _registerIncoming(IncomingDocument incoming) async {
+    await _loadCachedDocuments();
+    if (_disposed) {
+      return null;
+    }
     final document = _entryFromIncoming(incoming);
     if (document == null) {
       return null;
@@ -235,42 +272,61 @@ class FileLibraryRepository implements LibraryRepository {
       if (documents is! List) {
         return const <DocumentEntry>[];
       }
-      return <DocumentEntry>[
-        for (final item in documents)
-          if (item is Map) DocumentEntry.fromJson(item.cast<String, Object?>()),
-      ];
+      final restored = <DocumentEntry>[];
+      for (final item in documents) {
+        if (item is! Map) {
+          continue;
+        }
+        try {
+          var document = DocumentEntry.fromJson(item.cast<String, Object?>());
+          if (document.source case FileDocumentSource(:final path)) {
+            final legacyId = 'file:${path.replaceAll('\\', '/').toLowerCase()}';
+            if (document.id == legacyId) {
+              document = document.copyWith(
+                id: stableDocumentId(document.source),
+              );
+            }
+          }
+          restored.add(document);
+        } catch (_) {
+          // One corrupt row does not invalidate the remaining cached library.
+        }
+      }
+      return restored;
     } catch (_) {
       return const <DocumentEntry>[];
     }
   }
 
-  Future<void> _persist() async {
-    final previousWrite = _writeQueue;
-    final completer = Completer<void>();
-    _writeQueue = completer.future;
-    await previousWrite;
-    try {
-      final payload = <String, Object?>{
-        'version': _cacheVersion,
-        'documents': _documents.values
-            .map((document) => document.toJson())
-            .toList(growable: false),
-      };
-      final encoded = await Isolate.run<String>(() => jsonEncode(payload));
-      final file = await _cacheFile();
-      await file.parent.create(recursive: true);
-      final temporary = File('${file.path}.tmp');
-      await temporary.writeAsString(encoded, flush: true);
-      try {
-        await temporary.rename(file.path);
-      } on FileSystemException {
-        if (await file.exists()) {
-          await file.delete();
-        }
-        await temporary.rename(file.path);
+  Future<void> _persist() {
+    _writeRequested = true;
+    return _writeQueue ??= _drainWrites().whenComplete(() {
+      _writeQueue = null;
+      if (_writeRequested) {
+        unawaited(_persist());
       }
-    } finally {
-      completer.complete();
+    });
+  }
+
+  Future<void> _drainWrites() async {
+    while (_writeRequested) {
+      _writeRequested = false;
+      try {
+        final payload = <String, Object?>{
+          'version': _cacheVersion,
+          'documents': _documents.values
+              .map((document) => document.toJson())
+              .toList(growable: false),
+        };
+        final encoded = await Isolate.run<String>(() => jsonEncode(payload));
+        await writeFileAtomically(await _cacheFile(), encoded);
+        lastCacheWriteError = null;
+      } catch (error) {
+        // The catalog is a cache, never the document itself. Disk errors must
+        // not abort a successful scan, intent or document-opening operation.
+        lastCacheWriteError = error;
+        debugPrint('Folio catalog cache could not be written: $error');
+      }
     }
   }
 

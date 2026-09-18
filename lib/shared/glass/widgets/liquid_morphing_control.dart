@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../settings/folio_settings_scope.dart';
+
 import '../core/glass_geometry.dart';
 import '../core/liquid_shape.dart';
 import '../motion/glass_motion_controller.dart';
@@ -87,6 +89,9 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _motion.setLiquidMotionEnabled(
+      FolioSettingsScope.liquidMotionEnabledOf(context),
+    );
     _reducedMotion = MediaQuery.disableAnimationsOf(context);
     _motion.setReducedMotion(_reducedMotion);
   }
@@ -194,8 +199,10 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
               reducedMotion: _reducedMotion,
             );
 
-            Widget soften(Widget value) =>
-                LiquidContent.soften(child: value, sigma: selfBlur);
+            Widget soften(Widget value) => LiquidContent.soften(
+              child: value,
+              sigma: FolioSettingsScope.blurEnabledOf(context) ? selfBlur : 0,
+            );
 
             return AdaptiveGlassForegroundGroup(
               samplePoint: adaptiveGlassSamplePoint(materialRect),

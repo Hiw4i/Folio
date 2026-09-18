@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+
+import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 
 import '../../library/data/document_entry.dart';
 
@@ -53,7 +56,7 @@ class PreparedPdfFile extends PreparedPdfSource {
 }
 
 class PreparedPdfData extends PreparedPdfSource {
-  const PreparedPdfData({required this.bytes}) : super(length: bytes.length);
+  PreparedPdfData({required this.bytes}) : super(length: bytes.length);
 
   final Uint8List bytes;
 
@@ -122,56 +125,89 @@ class DeviceDocumentContentSource implements DocumentContentSource {
         'preparePdfSource',
         <String, Object?>{'uri': uri},
       );
-      final kind = raw?['kind'];
-      final length = (raw?['length'] as num?)?.toInt();
-      final sessionId = raw?['sessionId'] as String?;
-      if (kind is! String ||
-          length == null ||
-          length <= 0 ||
-          sessionId == null) {
-        throw const DocumentReadException(
-          DocumentReadFailureKind.unreadable,
-          'The document provider returned an invalid PDF source.',
-        );
-      }
-      Future<void> closeSession() async {
-        await _methodChannel.invokeMethod<void>(
+      final rawSessionId = raw?['sessionId'];
+      final sessionId = rawSessionId is String && rawSessionId.isNotEmpty
+          ? rawSessionId
+          : null;
+      Future<void>? closing;
+      Future<void> closeSession() {
+        if (sessionId == null) {
+          return Future<void>.value();
+        }
+        return closing ??= _methodChannel.invokeMethod<void>(
           'closePdfSource',
           <String, Object?>{'sessionId': sessionId},
         );
       }
 
-      if (kind == 'file') {
-        final path = raw?['path'] as String?;
-        if (path == null || path.isEmpty) {
-          await closeSession();
+      try {
+        final kind = raw?['kind'];
+        final rawLength = raw?['length'];
+        final length = rawLength is num && rawLength.isFinite
+            ? rawLength.toInt()
+            : null;
+        if (kind is! String ||
+            length == null ||
+            length <= 0 ||
+            sessionId == null) {
           throw const DocumentReadException(
             DocumentReadFailureKind.unreadable,
-            'The PDF cache file could not be prepared.',
+            'The document provider returned an invalid PDF source.',
           );
         }
-        return PreparedPdfFile(
-          path: path,
-          length: length,
-          onClose: closeSession,
+        if (kind == 'file') {
+          final path = raw?['path'];
+          if (path is! String || path.isEmpty) {
+            throw const DocumentReadException(
+              DocumentReadFailureKind.unreadable,
+              'The PDF cache file could not be prepared.',
+            );
+          }
+          return PreparedPdfFile(
+            path: path,
+            length: length,
+            onClose: closeSession,
+          );
+        }
+        if (kind == 'range') {
+          return PreparedPdfRandomAccess(
+            length: length,
+            readRange: (position, size) {
+              if (closing != null) {
+                throw const DocumentReadException(
+                  DocumentReadFailureKind.unavailable,
+                  'The PDF source has been closed.',
+                );
+              }
+              if (position < 0 || size < 0 || position > length) {
+                throw RangeError('Invalid PDF range: $position + $size');
+              }
+              if (size == 0 || position == length) {
+                return Future<Uint8List>.value(Uint8List(0));
+              }
+              return _readPdfRange(
+                sessionId: sessionId,
+                position: position,
+                size: size.clamp(0, length - position),
+              );
+            },
+            onClose: closeSession,
+          );
+        }
+        throw const DocumentReadException(
+          DocumentReadFailureKind.unreadable,
+          'The document provider returned an unsupported PDF source.',
         );
+      } catch (_) {
+        // A provider can allocate a session but return malformed metadata.
+        // Always release that session without masking the original failure.
+        try {
+          await closeSession();
+        } catch (error) {
+          debugPrint('Folio invalid PDF session cleanup failed: $error');
+        }
+        rethrow;
       }
-      if (kind == 'range') {
-        return PreparedPdfRandomAccess(
-          length: length,
-          readRange: (position, size) => _readPdfRange(
-            sessionId: sessionId,
-            position: position,
-            size: size,
-          ),
-          onClose: closeSession,
-        );
-      }
-      await closeSession();
-      throw const DocumentReadException(
-        DocumentReadFailureKind.unreadable,
-        'The document provider returned an unsupported PDF source.',
-      );
     } on PlatformException catch (error) {
       final kind = switch (error.code) {
         'access_denied' => DocumentReadFailureKind.denied,
@@ -204,6 +240,9 @@ class DeviceDocumentContentSource implements DocumentContentSource {
           DocumentReadFailureKind.unreadable,
           'The PDF source returned no data.',
         );
+      }
+      if (bytes.length > size) {
+        return Uint8List.sublistView(bytes, 0, size);
       }
       return bytes;
     } on PlatformException catch (error) {

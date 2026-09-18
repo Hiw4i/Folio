@@ -65,7 +65,10 @@ void main() {
   });
 
   test('foreground morph lags the liquid material', () {
-    expect(LiquidShape.contentMorph(0.5), lessThan(LiquidShape.visualMorph(0.5)));
+    expect(
+      LiquidShape.contentMorph(0.5),
+      lessThan(LiquidShape.visualMorph(0.5)),
+    );
     expect(LiquidShape.contentMorph(1), 1);
   });
 }

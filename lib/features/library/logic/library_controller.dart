@@ -43,9 +43,19 @@ class LibraryController extends ChangeNotifier {
   DocumentEntry? _pendingDocument;
   DocumentEntry? _unavailableDocument;
   StreamSubscription<LibrarySnapshot>? _refreshSubscription;
-  Completer<void>? _refreshCompleter;
   StreamSubscription<DocumentEntry>? _incomingSubscription;
-  int _refreshGeneration = 0;
+  Completer<void>? _refreshCompleter;
+  Future<void>? _loadFuture;
+  Future<void>? _refreshFuture;
+  int _recoveryRevision = 0;
+
+  // Build once per catalog revision, not once per getter/widget rebuild. A
+  // query only filters the already sorted index; it never sorts it again.
+  List<DocumentEntry>? _sorted;
+  Map<String, String> _normalizedNames = const <String, String>{};
+  List<DocumentEntry>? _matches;
+  List<DocumentEntry>? _recent;
+  List<DocumentEntry>? _regular;
 
   LibraryLoadState get loadState => _loadState;
   LibraryAccess get access => _access;
@@ -58,20 +68,29 @@ class LibraryController extends ChangeNotifier {
   DocumentEntry? get unavailableDocument => _unavailableDocument;
 
   List<DocumentEntry> get matches {
+    if (_matches case final cached?) {
+      return cached;
+    }
+    _ensureIndex();
     final normalizedQuery = _query.trim().toLowerCase();
-    final result = _documents.where((document) {
-      return _filter.accepts(document.format) &&
-          (normalizedQuery.isEmpty ||
-              document.name.toLowerCase().contains(normalizedQuery));
-    }).toList();
-    result.sort(_byName);
-    return List<DocumentEntry>.unmodifiable(result);
+    return _matches = List<DocumentEntry>.unmodifiable(
+      _sorted!.where(
+        (document) =>
+            _filter.accepts(document.format) &&
+            (normalizedQuery.isEmpty ||
+                _normalizedNames[document.id]!.contains(normalizedQuery)),
+      ),
+    );
   }
 
   List<DocumentEntry> get recentDocuments {
     if (_filter != LibraryFilter.all || _query.trim().isNotEmpty) {
       return const <DocumentEntry>[];
     }
+    return _recent ??= _buildRecents();
+  }
+
+  List<DocumentEntry> _buildRecents() {
     final result =
         _documents.where((document) => document.lastOpenedAt != null).toList()
           ..sort((a, b) => b.lastOpenedAt!.compareTo(a.lastOpenedAt!));
@@ -79,131 +98,211 @@ class LibraryController extends ChangeNotifier {
   }
 
   List<DocumentEntry> get regularDocuments {
+    if (_regular case final cached?) {
+      return cached;
+    }
     final recentIds = recentDocuments.map((document) => document.id).toSet();
-    return List<DocumentEntry>.unmodifiable(
+    return _regular = List<DocumentEntry>.unmodifiable(
       matches.where((document) => !recentIds.contains(document.id)),
     );
   }
 
-  Future<void> load() async {
+  void _ensureIndex() {
+    if (_sorted != null) {
+      return;
+    }
+    _normalizedNames = <String, String>{
+      for (final document in _documents)
+        document.id: document.name.toLowerCase(),
+    };
+    _sorted = List<DocumentEntry>.of(_documents)
+      ..sort((a, b) {
+        final insensitive = _normalizedNames[a.id]!.compareTo(
+          _normalizedNames[b.id]!,
+        );
+        return insensitive != 0 ? insensitive : a.name.compareTo(b.name);
+      });
+  }
+
+  void _replaceDocuments(Iterable<DocumentEntry> documents) {
+    _documents = List<DocumentEntry>.unmodifiable(documents);
+    _sorted = null;
+    _normalizedNames = const <String, String>{};
+    _recent = null;
+    _invalidateVisibleLists();
+  }
+
+  void _invalidateVisibleLists() {
+    _matches = null;
+    _regular = null;
+  }
+
+  Future<void> load() {
+    if (_disposed) {
+      return Future<void>.value();
+    }
+    return _loadFuture ??= _load().whenComplete(() => _loadFuture = null);
+  }
+
+  Future<void> _load() async {
     _loadState = LibraryLoadState.loading;
-    notifyListeners();
+    _notify();
     try {
       final snapshot = await repository.load();
       if (_disposed) {
         return;
       }
-      _documents = snapshot.documents;
+      _replaceDocuments(snapshot.documents);
       _access = snapshot.access;
       _loadState = LibraryLoadState.ready;
       _listenForIncomingDocuments();
-      final initialDocument = await repository.consumeInitialDocument();
-      if (initialDocument != null && !_disposed) {
-        _upsert(initialDocument);
-        _pendingDocument = initialDocument;
+      try {
+        final initialDocument = await repository.consumeInitialDocument();
+        if (_disposed) {
+          return;
+        }
+        if (initialDocument != null) {
+          _upsert(initialDocument);
+          _pendingDocument = initialDocument;
+        }
+      } catch (error) {
+        // A failed launch intent must not hide an otherwise valid catalog.
+        debugPrint('Folio launch document unavailable: $error');
       }
-    } catch (_) {
+    } catch (error) {
       if (_disposed) {
         return;
       }
       _loadState = LibraryLoadState.failed;
+      debugPrint('Folio catalog load failed: $error');
     }
-    notifyListeners();
-    if (_loadState == LibraryLoadState.ready) {
+    _notify();
+    if (!_disposed && _loadState == LibraryLoadState.ready) {
       unawaited(refresh());
     }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh() {
+    if (_disposed) {
+      return Future<void>.value();
+    }
+    // Resume/retry calls join an existing scan instead of repeatedly killing
+    // and restarting the isolate, which could prevent a large scan finishing.
+    return _refreshFuture ??= _refresh().whenComplete(
+      () => _refreshFuture = null,
+    );
+  }
+
+  Future<void> _refresh() async {
+    await _loadFuture;
     if (_disposed) {
       return;
     }
-    await _refreshSubscription?.cancel();
-    if (_refreshCompleter case final previous? when !previous.isCompleted) {
-      previous.complete();
-    }
     _isRefreshing = true;
     _refreshFailed = false;
-    final generation = ++_refreshGeneration;
-    notifyListeners();
+    _notify();
     final completed = Completer<void>();
     _refreshCompleter = completed;
-    _refreshSubscription = repository.refresh().listen(
-      (snapshot) {
-        if (_disposed || generation != _refreshGeneration) {
-          return;
-        }
-        _documents = snapshot.documents;
-        _access = snapshot.access;
-        notifyListeners();
-      },
-      onError: (Object _) {
-        if (!_disposed && generation == _refreshGeneration) {
-          _refreshFailed = true;
-        }
-      },
-      onDone: () {
-        if (!_disposed && generation == _refreshGeneration) {
-          _isRefreshing = false;
-          notifyListeners();
-        }
-        if (!completed.isCompleted) {
-          completed.complete();
-        }
-      },
-      cancelOnError: false,
-    );
-    await completed.future;
+    try {
+      _refreshSubscription = repository.refresh().listen(
+        (snapshot) {
+          if (_disposed) {
+            return;
+          }
+          _replaceDocuments(snapshot.documents);
+          _access = snapshot.access;
+          _notify();
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!_disposed) {
+            _refreshFailed = true;
+            debugPrint('Folio catalog scan failed: $error');
+            _notify();
+          }
+        },
+        onDone: () {
+          if (!completed.isCompleted) {
+            completed.complete();
+          }
+        },
+      );
+      await completed.future;
+    } catch (error) {
+      if (!_disposed) {
+        _refreshFailed = true;
+        debugPrint('Folio catalog scan failed: $error');
+      }
+    } finally {
+      _refreshSubscription = null;
+      _refreshCompleter = null;
+      _isRefreshing = false;
+      _notify();
+    }
   }
 
-  Future<void> requestFullAccess() => repository.requestFullAccess();
+  Future<void> requestFullAccess() async {
+    if (_disposed) {
+      return;
+    }
+    try {
+      await repository.requestFullAccess();
+    } catch (error) {
+      debugPrint('Folio storage settings unavailable: $error');
+      _refreshFailed = true;
+      _notify();
+    }
+  }
 
   void selectFilter(LibraryFilter value) {
-    if (_filter == value) {
+    if (_disposed || _filter == value) {
       return;
     }
     _filter = value;
-    notifyListeners();
+    _invalidateVisibleLists();
+    _notify();
   }
 
   void updateQuery(String value) {
-    if (_query == value) {
+    if (_disposed || _query == value) {
       return;
     }
     _query = value;
-    notifyListeners();
+    _invalidateVisibleLists();
+    _notify();
   }
 
   Future<void> open(DocumentEntry document) async {
-    if (!document.isAvailable) {
-      _unavailableDocument = document;
-      notifyListeners();
-      return;
-    }
     final updated = await markOpened(document);
     if (updated == null || _disposed) {
       return;
     }
     _pendingDocument = updated;
-    notifyListeners();
+    _notify();
   }
 
-  /// Records a list-initiated opening without scheduling a second route.
-  ///
-  /// The caller can start its visual transition immediately; the repository
-  /// update completes independently and only refreshes the list when ready.
+  /// Recording history must never prevent opening the actual document.
   Future<DocumentEntry?> markOpened(DocumentEntry document) async {
-    if (!document.isAvailable) {
-      _unavailableDocument = document;
-      notifyListeners();
+    if (_disposed) {
       return null;
     }
-    final updated = await repository.markOpened(document);
+    if (!document.isAvailable) {
+      _recoveryRevision++;
+      _unavailableDocument = document;
+      _notify();
+      return null;
+    }
+    DocumentEntry updated;
+    try {
+      updated = await repository.markOpened(document);
+    } catch (error) {
+      debugPrint('Folio could not record recent document: $error');
+      updated = document.copyWith(lastOpenedAt: DateTime.now());
+    }
     if (_disposed) {
       return null;
     }
     _upsert(updated);
-    notifyListeners();
+    _notify();
     return updated;
   }
 
@@ -214,102 +313,128 @@ class LibraryController extends ChangeNotifier {
   }
 
   void dismissUnavailable() {
-    if (_unavailableDocument == null) {
+    if (_disposed || _unavailableDocument == null) {
       return;
     }
+    _recoveryRevision++;
     _unavailableDocument = null;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> recoverUnavailable() async {
     final document = _unavailableDocument;
-    if (document == null) {
+    if (_disposed || document == null) {
       return;
     }
-    final recovered = await repository.recoverAccess(document);
-    if (_disposed) {
-      return;
+    final revision = ++_recoveryRevision;
+    try {
+      final recovered = await repository.recoverAccess(document);
+      if (_disposed || revision != _recoveryRevision) {
+        return;
+      }
+      if (recovered != null) {
+        _replaceDocuments(_documents.where((item) => item.id != document.id));
+        _upsert(recovered);
+        _pendingDocument = recovered;
+      }
+      _unavailableDocument = null;
+      _notify();
+    } catch (error) {
+      debugPrint('Folio could not recover document access: $error');
     }
-    if (recovered != null) {
-      _documents = _documents.where((item) => item.id != document.id).toList();
-      _upsert(recovered);
-      _pendingDocument = recovered;
-    }
-    _unavailableDocument = null;
-    notifyListeners();
   }
 
   Future<void> removeUnavailableFromRecents() async {
     final document = _unavailableDocument;
-    if (document == null) {
+    if (_disposed || document == null) {
       return;
     }
-    await repository.removeFromRecents(document);
-    if (_disposed) {
-      return;
+    final revision = ++_recoveryRevision;
+    await removeFromRecents(document);
+    if (!_disposed && revision == _recoveryRevision) {
+      _unavailableDocument = null;
+      _notify();
     }
-    _documents = _documents.where((item) => item.id != document.id).toList();
-    _unavailableDocument = null;
-    notifyListeners();
   }
 
   Future<void> removeFromRecents(DocumentEntry document) async {
-    await repository.removeFromRecents(document);
+    if (_disposed) {
+      return;
+    }
+    try {
+      await repository.removeFromRecents(document);
+    } catch (error) {
+      debugPrint('Folio could not persist recent removal: $error');
+    }
     if (_disposed) {
       return;
     }
     if (document.source is UriDocumentSource || !document.isAvailable) {
-      _documents = _documents.where((item) => item.id != document.id).toList();
+      _replaceDocuments(_documents.where((item) => item.id != document.id));
     } else {
-      _documents = <DocumentEntry>[
-        for (final item in _documents)
-          if (item.id == document.id)
-            item.copyWith(lastOpenedAt: null)
-          else
-            item,
-      ];
+      _replaceDocuments(
+        _documents.map(
+          (item) =>
+              item.id == document.id ? item.copyWith(lastOpenedAt: null) : item,
+        ),
+      );
     }
-    notifyListeners();
+    _notify();
   }
 
   void _listenForIncomingDocuments() {
-    _incomingSubscription ??= repository.incomingDocuments.listen((document) {
-      if (_disposed) {
-        return;
-      }
-      _upsert(document);
-      _pendingDocument = document;
-      notifyListeners();
-    });
+    _incomingSubscription ??= repository.incomingDocuments.listen(
+      (document) {
+        if (_disposed) {
+          return;
+        }
+        _upsert(document);
+        _pendingDocument = document;
+        _notify();
+      },
+      onError: (Object error, StackTrace stack) {
+        debugPrint('Folio incoming document failed: $error');
+      },
+    );
   }
 
   void _upsert(DocumentEntry document) {
     final index = _documents.indexWhere((item) => item.id == document.id);
-    if (index < 0) {
-      _documents = <DocumentEntry>[..._documents, document];
-    } else {
-      _documents = <DocumentEntry>[
-        for (var i = 0; i < _documents.length; i++)
-          if (i == index) document else _documents[i],
-      ];
-    }
+    _replaceDocuments(
+      index < 0
+          ? <DocumentEntry>[..._documents, document]
+          : <DocumentEntry>[
+              for (var i = 0; i < _documents.length; i++)
+                if (i == index) document else _documents[i],
+            ],
+    );
   }
 
-  static int _byName(DocumentEntry a, DocumentEntry b) {
-    final insensitive = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    return insensitive != 0 ? insensitive : a.name.compareTo(b.name);
+  void _notify() {
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   @override
   void dispose() {
     _disposed = true;
-    _refreshGeneration += 1;
-    unawaited(_refreshSubscription?.cancel());
-    unawaited(_incomingSubscription?.cancel());
-    if (_refreshCompleter case final pending? when !pending.isCompleted) {
+    _recoveryRevision++;
+    unawaited(_cancel(_refreshSubscription));
+    unawaited(_cancel(_incomingSubscription));
+    final pending = _refreshCompleter;
+    if (pending != null && !pending.isCompleted) {
       pending.complete();
     }
     repository.dispose();
     super.dispose();
+  }
+
+  static Future<void> _cancel(StreamSubscription<Object?>? subscription) async {
+    try {
+      await subscription?.cancel();
+    } catch (error) {
+      debugPrint('Folio subscription cleanup failed: $error');
+    }
   }
 }

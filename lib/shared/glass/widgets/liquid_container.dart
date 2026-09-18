@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../settings/folio_settings_scope.dart';
+
 import '../core/glass_geometry.dart';
 import '../core/liquid_shape.dart';
 import '../motion/glass_motion_controller.dart';
@@ -204,6 +206,9 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _motion.setLiquidMotionEnabled(
+      FolioSettingsScope.liquidMotionEnabledOf(context),
+    );
     _motion.setReducedMotion(MediaQuery.disableAnimationsOf(context));
   }
 

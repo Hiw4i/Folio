@@ -99,6 +99,7 @@ class DocumentEntry {
   static const Object _notProvided = Object();
 
   DocumentEntry copyWith({
+    String? id,
     DocumentSource? source,
     String? name,
     DocumentFormat? format,
@@ -108,7 +109,7 @@ class DocumentEntry {
     bool? isAvailable,
   }) {
     return DocumentEntry(
-      id: id,
+      id: id ?? this.id,
       source: source ?? this.source,
       name: name ?? this.name,
       format: format ?? this.format,
@@ -171,8 +172,7 @@ class DocumentEntry {
 
 String stableDocumentId(DocumentSource source) {
   return switch (source) {
-    FileDocumentSource(:final path) =>
-      'file:${path.replaceAll('\\', '/').toLowerCase()}',
+    FileDocumentSource(:final path) => 'file:${path.replaceAll('\\', '/')}',
     UriDocumentSource(:final uri) => 'uri:$uri',
   };
 }

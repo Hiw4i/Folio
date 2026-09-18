@@ -2,6 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import '../../settings/folio_settings_scope.dart';
+
 import '../core/glass_tokens.dart';
 
 /// Canonical liquid surfaces: one blur, one shadow language, one rim.
@@ -28,13 +30,14 @@ abstract final class LiquidBlur {
 
   static ui.ImageFilter filterFor(double sigma) {
     final rest = const GlassTokens().blurSigma;
+    sigma = sigma.isFinite ? sigma.clamp(0.0, rest) : rest;
     if (sigma >= rest - 0.001) {
       return filter;
     }
     final quantized = (sigma * 2).round() / 2;
     var animated = _animatedFilters[quantized];
     if (animated == null) {
-      if (_animatedFilters.length >= 24) {
+      if (_animatedFilters.length >= 32) {
         _animatedFilters.clear();
       }
       animated = ui.ImageFilter.blur(
@@ -73,7 +76,7 @@ class LiquidBlurScope extends InheritedWidget {
   @override
   bool updateShouldNotify(LiquidBlurScope oldWidget) =>
       (sigma * 2).round() != (oldWidget.sigma * 2).round() ||
-      (opacity - oldWidget.opacity).abs() >= 0.01;
+      (opacity * 100).round() != (oldWidget.opacity * 100).round();
 }
 
 /// Static (non-deforming) liquid shell: the `GlassPanel` look as a mode of
@@ -104,6 +107,7 @@ class LiquidCase extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
     final radius = BorderRadius.circular(borderRadius);
     final transitionBlur = LiquidBlurScope.maybeOf(context);
     final transitionOpacity = LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
@@ -112,7 +116,9 @@ class LiquidCase extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: radius,
           // Same shadow language as GlassShell (offset y=7-8, soft black).
-          boxShadow: transitionOpacity >= 0.999
+          boxShadow: !blurEnabled
+              ? const <BoxShadow>[]
+              : transitionOpacity >= 0.999
               ? const <BoxShadow>[
                   BoxShadow(
                     color: Color(0x4D020809),
@@ -122,9 +128,8 @@ class LiquidCase extends StatelessWidget {
                 ]
               : <BoxShadow>[
                   BoxShadow(
-                    color: const Color(0xFF020809).withValues(
-                      alpha: (0x4D / 255) * transitionOpacity,
-                    ),
+                    color: const Color(0xFF020809)
+                        .withValues(alpha: (0x4D / 255) * transitionOpacity),
                     blurRadius: 22,
                     offset: const Offset(0, 8),
                   ),
@@ -133,14 +138,15 @@ class LiquidCase extends StatelessWidget {
         child: ClipRRect(
           borderRadius: radius,
           child: BackdropFilter.grouped(
-            filter: transitionBlur == null
+            enabled: blurEnabled,
+            filter: !blurEnabled || transitionBlur == null
                 ? LiquidBlur.filter
                 : LiquidBlur.filterFor(transitionBlur),
             child: Opacity(
               opacity: transitionOpacity,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: fill,
+                  color: blurEnabled ? fill : const Color(0xFF202123),
                   borderRadius: radius,
                   border: Border.all(
                     color: const Color(0x42FFFFFF),

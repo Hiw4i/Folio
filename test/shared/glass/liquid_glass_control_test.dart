@@ -224,9 +224,7 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('inner_button')),
-    );
+    await tester.tap(find.byKey(const ValueKey<String>('inner_button')));
     await tester.pumpAndSettle();
     expect(innerTaps, 1);
     expect(backgroundTaps, 0);

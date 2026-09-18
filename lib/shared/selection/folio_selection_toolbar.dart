@@ -67,9 +67,7 @@ class FolioSelectionToolbar extends StatelessWidget {
       anchorAbove: anchors.primaryAnchor,
       anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
       toolbarBuilder: (context, child) => child,
-      children: <Widget>[
-        _FolioPill(copy: copy, selectAll: selectAll),
-      ],
+      children: <Widget>[_FolioPill(copy: copy, selectAll: selectAll)],
     );
   }
 }
@@ -103,26 +101,25 @@ class _FolioPill extends StatelessWidget {
     return _FolioPillSurface(
       width: pillWidth,
       child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (copyItem != null)
-              _PillIconButton(
-                key: const ValueKey<String>('folio_toolbar_copy'),
-                item: copyItem,
-                icon: LucideIcons.copy,
-                semanticsLabel: 'Copy',
-              ),
-            if (copyItem != null && selectAllItem != null)
-              const _PillDivider(),
-            if (selectAllItem != null)
-              _PillIconButton(
-                key: const ValueKey<String>('folio_toolbar_select_all'),
-                item: selectAllItem,
-                icon: LucideIcons.textSelect,
-                semanticsLabel: 'Select all',
-              ),
-            ],
-          ),
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (copyItem != null)
+            _PillIconButton(
+              key: const ValueKey<String>('folio_toolbar_copy'),
+              item: copyItem,
+              icon: LucideIcons.copy,
+              semanticsLabel: 'Copy',
+            ),
+          if (copyItem != null && selectAllItem != null) const _PillDivider(),
+          if (selectAllItem != null)
+            _PillIconButton(
+              key: const ValueKey<String>('folio_toolbar_select_all'),
+              item: selectAllItem,
+              icon: LucideIcons.textSelect,
+              semanticsLabel: 'Select all',
+            ),
+        ],
+      ),
     );
   }
 }

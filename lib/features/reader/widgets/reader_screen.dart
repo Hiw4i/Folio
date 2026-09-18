@@ -11,6 +11,7 @@ import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
 import '../logic/document_renderer.dart';
 import '../logic/reader_state.dart';
+import '../logic/renderer_lifecycle.dart';
 import '../pdf/widgets/pdf_document_view.dart';
 import '../powerpoint/widgets/powerpoint_document_view.dart';
 import '../text/widgets/text_document_view.dart';
@@ -25,6 +26,7 @@ class ReaderScreen extends StatefulWidget {
     required this.onRemoveFromRecents,
     this.deferInitialLoad = false,
     this.initialRenderer,
+    this.onDisposed,
     super.key,
   });
 
@@ -38,6 +40,10 @@ class ReaderScreen extends StatefulWidget {
   /// A renderer already warming via [ReaderPreloader]. When provided, the
   /// screen adopts it as-is and never restarts its in-flight [open].
   final DocumentRenderer? initialRenderer;
+
+  /// Releases the library navigation gate even if its originating list row
+  /// moved to Recents and its OpenContainer was removed while reading.
+  final VoidCallback? onDisposed;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -232,6 +238,9 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (viewport == null) {
       return;
     }
+    if (!_scrollController.hasClients) {
+      return;
+    }
     final position = _scrollController.position;
     var targetOffset = viewport.getOffsetToReveal(revealObject, 0.28).offset;
     if (paragraph != null) {
@@ -416,15 +425,14 @@ class _ReaderScreenState extends State<ReaderScreen>
     _searchDebounce?.cancel();
     _initialLoadDelay?.cancel();
     _revealGeneration += 1;
-    _renderer
-      ..removeListener(_rendererChanged)
-      ..close()
-      ..dispose();
+    _renderer.removeListener(_rendererChanged);
+    releaseDocumentRenderer(_renderer);
     _scrollController
       ..removeListener(_scrollChanged)
       ..dispose();
     _chromeController.dispose();
     _progressPercent.dispose();
+    widget.onDisposed?.call();
     super.dispose();
   }
 
@@ -474,173 +482,171 @@ class _ReaderScreenState extends State<ReaderScreen>
               ),
             ),
             BackdropGroup(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    Positioned(
-                      key: const ValueKey<String>('reader_top_chrome'),
-                      left: 16,
-                      right: 16,
-                      top: media.viewPadding.top + 10,
-                      height: 50,
-                      child: ReaderChromeShell(
-                        progress: _chromeProgress,
-                        hiddenDy: ReaderChromeSpec.topHiddenDy,
-                        child: _TopChromeContent(
-                          document: widget.document,
-                          onBack: _handleBackButton,
-                        ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  Positioned(
+                    key: const ValueKey<String>('reader_top_chrome'),
+                    left: 16,
+                    right: 16,
+                    top: media.viewPadding.top + 10,
+                    height: 50,
+                    child: ReaderChromeShell(
+                      progress: _chromeProgress,
+                      hiddenDy: ReaderChromeSpec.topHiddenDy,
+                      child: _TopChromeContent(
+                        document: widget.document,
+                        onBack: _handleBackButton,
                       ),
                     ),
-                    Positioned(
-                      left: 20,
-                      bottom:
-                          media.viewInsets.bottom +
-                          media.viewPadding.bottom +
-                          28,
-                      child: ReaderChromeShell(
-                        progress: _chromeProgress,
-                        hiddenDy: ReaderChromeSpec.pillHiddenDy,
-                        child: AnimatedBuilder(
-                          animation: _renderer,
-                          builder: (context, child) {
-                            return ValueListenableBuilder<int>(
-                              valueListenable: _progressPercent,
-                              builder: (context, percent, _) {
-                                return _ProgressPill(
-                                  label: _renderer is TextDocumentRenderer
-                                      ? '$percent%'
-                                      : _renderer is PdfDocumentRenderer
-                                      ? _renderer.positionLabel
-                                      : _renderer is OfficeDocumentRendererBase
-                                      ? _renderer.positionLabel
-                                      : widget.document.format.extension
-                                            .toUpperCase(),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: media.viewInsets.bottom,
-                      height:
-                          LiquidSearchControlState.height +
-                          media.viewPadding.bottom,
-                      child: ReaderChromeShell(
-                        progress: _chromeProgress,
-                        hiddenDy: ReaderChromeSpec.bottomHiddenDy,
-                        child: LiquidSearchControl(
-                          key: _searchKey,
-                          hintText: 'Search in document',
-                          semanticsLabel: 'Search in document',
-                          onChanged: _searchChanged,
-                          onSubmitted: (_) {
-                            if (_renderer.hitCount > 0) {
-                              _renderer.showNextHit();
-                            }
-                          },
-                          onExpansionChanged: (expanded) {
-                            if (!mounted || _searchExpanded == expanded) {
-                              return;
-                            }
-                            setState(() => _searchExpanded = expanded);
-                            _driveChrome();
-                          },
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: ReaderChromeShell(
-                        progress: _chromeProgress,
-                        hiddenDy: ReaderChromeSpec.topHiddenDy,
-                        child: LiquidMorphingControl(
-                          key: _menuKey,
-                          collapsedHitKey: const ValueKey<String>(
-                            'reader_menu_button',
-                          ),
-                          collapsedSemanticsLabel: 'Document menu',
-                          expandedSemanticsLabel: 'Document menu',
-                          geometryBuilder: (viewport) {
-                            final top = media.viewPadding.top + 10;
-                            return LiquidMorphGeometry(
-                              collapsedRect: Rect.fromLTWH(
-                                viewport.width - 64,
-                                top,
-                                48,
-                                48,
-                              ),
-                              expandedRect: Rect.fromLTWH(
-                                viewport.width - 242,
-                                top,
-                                226,
-                                112,
-                              ),
-                              expandedCornerRadius: 24,
-                            );
-                          },
-                          collapsedChild: const Center(child: _MenuGlyph()),
-                          expandedChild: _ReaderMenuContent(
-                            onFileInfo: () {
-                              _menuKey.currentState?.close();
-                              setState(() => _infoOpen = true);
+                  ),
+                  Positioned(
+                    left: 20,
+                    bottom:
+                        media.viewInsets.bottom + media.viewPadding.bottom + 28,
+                    child: ReaderChromeShell(
+                      progress: _chromeProgress,
+                      hiddenDy: ReaderChromeSpec.pillHiddenDy,
+                      child: AnimatedBuilder(
+                        animation: _renderer,
+                        builder: (context, child) {
+                          return ValueListenableBuilder<int>(
+                            valueListenable: _progressPercent,
+                            builder: (context, percent, _) {
+                              return _ProgressPill(
+                                label: _renderer is TextDocumentRenderer
+                                    ? '$percent%'
+                                    : _renderer is PdfDocumentRenderer
+                                    ? _renderer.positionLabel
+                                    : _renderer is OfficeDocumentRendererBase
+                                    ? _renderer.positionLabel
+                                    : widget.document.format.extension
+                                          .toUpperCase(),
+                              );
                             },
-                            onRemove: () {
-                              _menuKey.currentState?.close();
-                              unawaited(widget.onRemoveFromRecents());
-                            },
-                          ),
-                          onExpansionChanged: (expanded) {
-                            if (!mounted || _menuOpen == expanded) {
-                              return;
-                            }
-                            setState(() => _menuOpen = expanded);
-                            if (expanded) {
-                              _setChromeTarget(true);
-                            }
-                          },
-                        ),
+                          );
+                        },
                       ),
                     ),
-                    Positioned(
-                      right: 20,
-                      bottom:
-                          media.viewInsets.bottom +
-                          media.viewPadding.bottom +
-                          102,
-                      child: ReaderChromeShell(
-                        progress: _chromeProgress,
-                        hiddenDy: ReaderChromeSpec.pillHiddenDy,
-                        child: AnimatedBuilder(
-                          animation: _renderer,
-                          builder: (context, child) {
-                            final hasQuery = _renderer.query.trim().isNotEmpty;
-                            final gated = hasQuery && !_menuOpen && !_infoOpen;
-                            return AnimatedOpacity(
-                              opacity: gated ? 1 : 0,
-                              duration: navigatorFadeDuration,
-                              curve: gated
-                                  ? ReaderChromeSpec.showCurve
-                                  : ReaderChromeSpec.hideCurve,
-                              child: IgnorePointer(
-                                ignoring: !gated,
-                                child: ExcludeSemantics(
-                                  excluding: !gated,
-                                  child: hasQuery
-                                      ? _SearchNavigator(renderer: _renderer)
-                                      : const SizedBox.shrink(),
-                                ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: media.viewInsets.bottom,
+                    height:
+                        LiquidSearchControlState.height +
+                        media.viewPadding.bottom,
+                    child: ReaderChromeShell(
+                      progress: _chromeProgress,
+                      hiddenDy: ReaderChromeSpec.bottomHiddenDy,
+                      child: LiquidSearchControl(
+                        key: _searchKey,
+                        hintText: 'Search in document',
+                        semanticsLabel: 'Search in document',
+                        onChanged: _searchChanged,
+                        onSubmitted: (_) {
+                          if (_renderer.hitCount > 0) {
+                            _renderer.showNextHit();
+                          }
+                        },
+                        onExpansionChanged: (expanded) {
+                          if (!mounted || _searchExpanded == expanded) {
+                            return;
+                          }
+                          setState(() => _searchExpanded = expanded);
+                          _driveChrome();
+                        },
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: ReaderChromeShell(
+                      progress: _chromeProgress,
+                      hiddenDy: ReaderChromeSpec.topHiddenDy,
+                      child: LiquidMorphingControl(
+                        key: _menuKey,
+                        collapsedHitKey: const ValueKey<String>(
+                          'reader_menu_button',
+                        ),
+                        collapsedSemanticsLabel: 'Document menu',
+                        expandedSemanticsLabel: 'Document menu',
+                        geometryBuilder: (viewport) {
+                          final top = media.viewPadding.top + 10;
+                          return LiquidMorphGeometry(
+                            collapsedRect: Rect.fromLTWH(
+                              viewport.width - 64,
+                              top,
+                              48,
+                              48,
+                            ),
+                            expandedRect: Rect.fromLTWH(
+                              viewport.width - 242,
+                              top,
+                              226,
+                              112,
+                            ),
+                            expandedCornerRadius: 24,
+                          );
+                        },
+                        collapsedChild: const Center(child: _MenuGlyph()),
+                        expandedChild: _ReaderMenuContent(
+                          onFileInfo: () {
+                            _menuKey.currentState?.close();
+                            setState(() => _infoOpen = true);
+                          },
+                          onRemove: () {
+                            _menuKey.currentState?.close();
+                            unawaited(widget.onRemoveFromRecents());
+                          },
+                        ),
+                        onExpansionChanged: (expanded) {
+                          if (!mounted || _menuOpen == expanded) {
+                            return;
+                          }
+                          setState(() => _menuOpen = expanded);
+                          if (expanded) {
+                            _setChromeTarget(true);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 20,
+                    bottom:
+                        media.viewInsets.bottom +
+                        media.viewPadding.bottom +
+                        102,
+                    child: ReaderChromeShell(
+                      progress: _chromeProgress,
+                      hiddenDy: ReaderChromeSpec.pillHiddenDy,
+                      child: AnimatedBuilder(
+                        animation: _renderer,
+                        builder: (context, child) {
+                          final hasQuery = _renderer.query.trim().isNotEmpty;
+                          final gated = hasQuery && !_menuOpen && !_infoOpen;
+                          return AnimatedOpacity(
+                            opacity: gated ? 1 : 0,
+                            duration: navigatorFadeDuration,
+                            curve: gated
+                                ? ReaderChromeSpec.showCurve
+                                : ReaderChromeSpec.hideCurve,
+                            child: IgnorePointer(
+                              ignoring: !gated,
+                              child: ExcludeSemantics(
+                                excluding: !gated,
+                                child: hasQuery
+                                    ? _SearchNavigator(renderer: _renderer)
+                                    : const SizedBox.shrink(),
                               ),
-                            );
-                          },
-                        ),
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
             ),
             if (_infoOpen)
               _FileInfoOverlay(

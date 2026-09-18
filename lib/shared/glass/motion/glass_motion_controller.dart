@@ -21,6 +21,9 @@ class GlassMotionController extends LiquidMotionController {
   }) : _tokens = tokens ?? const MotionTokens.standard();
 
   final bool morphEnabled;
+  bool _liquidMotionEnabled = true;
+
+  bool get liquidMotionEnabled => _liquidMotionEnabled;
   MotionTokens _tokens;
   bool _wantsOpen = false;
   bool _pointerDown = false;
@@ -63,11 +66,54 @@ class GlassMotionController extends LiquidMotionController {
   MotionTokens get tokens => _tokens;
 
   void _wake() {
-    wake();
+    if (_liquidMotionEnabled) {
+      wake();
+    } else {
+      _settleWithoutMotion();
+    }
+  }
+
+  void setLiquidMotionEnabled(bool enabled) {
+    if (_liquidMotionEnabled == enabled) {
+      return;
+    }
+    _liquidMotionEnabled = enabled;
+    if (!enabled) {
+      stopSimulation();
+      _settleWithoutMotion();
+    } else {
+      _wake();
+    }
+    notifyListeners();
+  }
+
+  void _settleWithoutMotion() {
+    morph = _wantsOpen ? 1 : 0;
+    separation = _wantsOpen ? 1 : 0;
+    morphVelocity = separationVelocity = 0;
+    press = pressVelocity = 0;
+    submitEnergy = submitVelocity = 0;
+    settleWobble = settleWobbleVelocity = 0;
+    displacement = displacementVelocity = pointerVelocity = Offset.zero;
+    _dragTarget = Offset.zero;
+    if (!_pointerDown) {
+      _materialTarget = GlassPointerTarget.none;
+    }
+    lightPosition = _lightTarget;
+    backdropScale = 1;
+    _openingImpulseArmed = _collapseImpulseArmed = false;
+    state = _wantsOpen
+        ? GlassInteractionState.open
+        : _pointerDown
+        ? GlassInteractionState.pressed
+        : GlassInteractionState.idle;
   }
 
   @override
   bool get isAtRest {
+    if (!_liquidMotionEnabled) {
+      return true;
+    }
     if (_pointerDown) {
       return false;
     }
@@ -174,6 +220,10 @@ class GlassMotionController extends LiquidMotionController {
       return;
     }
     _lightTarget = position;
+    if (!_liquidMotionEnabled) {
+      lightPosition = position;
+      return;
+    }
     _wake();
   }
 
@@ -191,9 +241,7 @@ class GlassMotionController extends LiquidMotionController {
 
     if (wasTap && target == GlassPointerTarget.cancel && separation > 0.82) {
       requestClose();
-    } else if (wasTap &&
-        target == GlassPointerTarget.main &&
-        morphEnabled) {
+    } else if (wasTap && target == GlassPointerTarget.main && morphEnabled) {
       if (!_wantsOpen || state == GlassInteractionState.closing) {
         requestOpen();
       }
@@ -249,6 +297,9 @@ class GlassMotionController extends LiquidMotionController {
 
   @override
   void integrate(double dt) {
+    if (!_liquidMotionEnabled) {
+      return;
+    }
     final previousMorph = morph;
     final previousSeparation = separation;
     final morphTarget = _wantsOpen

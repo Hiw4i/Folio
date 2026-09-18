@@ -1,5 +1,8 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+
+import '../../settings/folio_settings_scope.dart';
+
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../../selection/folio_selection_toolbar.dart';
@@ -64,8 +67,10 @@ class LiquidSearchMorph extends StatelessWidget {
       press: frame.deformCancel ? frame.press : 0,
     );
 
-    Widget soften(Widget child) =>
-        LiquidContent.soften(child: child, sigma: selfBlur);
+    Widget soften(Widget child) => LiquidContent.soften(
+      child: child,
+      sigma: FolioSettingsScope.blurEnabledOf(context) ? selfBlur : 0,
+    );
 
     return AdaptiveGlassForegroundGroup(
       samplePoint: adaptiveGlassSamplePoint(frame.mainRect),

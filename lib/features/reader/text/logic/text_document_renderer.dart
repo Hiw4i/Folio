@@ -29,7 +29,8 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   bool isSearching = false;
   @override
   int activeHitIndex = -1;
-  int _generation = 0;
+  int _openGeneration = 0;
+  int _searchRevision = 0;
   bool _disposed = false;
 
   @override
@@ -49,21 +50,28 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
 
   @override
   Future<void> open() async {
-    final generation = ++_generation;
+    if (_disposed) {
+      return;
+    }
+    _searchRevision++;
+    final generation = ++_openGeneration;
     loadState = ReaderLoadState.loading;
     failure = null;
     content = null;
     _clearSearch(notify: false);
     notifyListeners();
     try {
-      final loaded = await loader.load(document);
-      if (_disposed || generation != _generation) {
+      final loaded = await loader.load(
+        document,
+        isCancelled: () => _disposed || generation != _openGeneration,
+      );
+      if (_disposed || generation != _openGeneration) {
         return;
       }
       content = loaded;
       loadState = ReaderLoadState.ready;
     } on UnsupportedTextEncodingException {
-      if (_disposed || generation != _generation) {
+      if (_disposed || generation != _openGeneration) {
         return;
       }
       loadState = ReaderLoadState.failed;
@@ -73,7 +81,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
         message: 'Folio can read UTF-8 and BOM-marked UTF-16 text files.',
       );
     } on DocumentReadException catch (error) {
-      if (_disposed || generation != _generation) {
+      if (_disposed || generation != _openGeneration) {
         return;
       }
       loadState = ReaderLoadState.failed;
@@ -98,7 +106,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
         ),
       };
     } catch (_) {
-      if (_disposed || generation != _generation) {
+      if (_disposed || generation != _openGeneration) {
         return;
       }
       loadState = ReaderLoadState.failed;
@@ -110,14 +118,20 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
       );
     }
     notifyListeners();
+    if (loadState == ReaderLoadState.ready && query.trim().isNotEmpty) {
+      await search(query);
+    }
   }
 
   @override
   Future<void> search(String value) async {
+    if (_disposed) {
+      return;
+    }
     final normalized = value.trim();
     query = value;
     final loaded = content;
-    final generation = ++_generation;
+    final revision = ++_searchRevision;
     if (normalized.isEmpty || loaded == null) {
       _hits = const <ReaderSearchHit>[];
       _hitsByChunk = const <int, List<ReaderSearchHit>>{};
@@ -132,15 +146,28 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     activeHitIndex = -1;
     isSearching = true;
     notifyListeners();
-    final rawHits = await Isolate.run<List<List<int>>>(() {
-      return _findSearchHits(
-        loaded.text,
-        normalized,
-        loaded.isMarkdown,
-        loaded.chunks.map((chunk) => chunk.startOffset).toList(),
-      );
-    });
-    if (_disposed || generation != _generation) {
+    List<List<int>> rawHits;
+    try {
+      final starts = loaded.chunks.map((chunk) => chunk.startOffset).toList();
+      rawHits = loaded.text.length <= 16384
+          ? _findSearchHits(loaded.text, normalized, loaded.isMarkdown, starts)
+          : await Isolate.run<List<List<int>>>(
+              () => _findSearchHits(
+                loaded.text,
+                normalized,
+                loaded.isMarkdown,
+                starts,
+              ),
+            );
+    } catch (error) {
+      if (!_disposed && revision == _searchRevision) {
+        isSearching = false;
+        notifyListeners();
+      }
+      debugPrint('Folio text search failed: $error');
+      return;
+    }
+    if (_disposed || revision != _searchRevision) {
       return;
     }
     _hits = List<ReaderSearchHit>.unmodifiable(
@@ -171,7 +198,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
 
   @override
   void showNextHit() {
-    if (_hits.isEmpty) {
+    if (_disposed || _hits.isEmpty) {
       return;
     }
     activeHitIndex = (activeHitIndex + 1) % _hits.length;
@@ -180,7 +207,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
 
   @override
   void showPreviousHit() {
-    if (_hits.isEmpty) {
+    if (_disposed || _hits.isEmpty) {
       return;
     }
     activeHitIndex = (activeHitIndex - 1 + _hits.length) % _hits.length;
@@ -200,7 +227,8 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
 
   @override
   Future<void> close() async {
-    _generation += 1;
+    _openGeneration += 1;
+    _searchRevision += 1;
     content = null;
     _clearSearch(notify: false);
   }
@@ -208,7 +236,10 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   @override
   void dispose() {
     _disposed = true;
-    _generation += 1;
+    content = null;
+    _clearSearch(notify: false);
+    _openGeneration += 1;
+    _searchRevision += 1;
     super.dispose();
   }
 }

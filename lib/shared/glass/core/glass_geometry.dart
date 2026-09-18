@@ -309,8 +309,7 @@ abstract final class GlassGeometry {
     if (expandedGroupLeft != null) {
       finalMainLeft = expandedGroupLeft;
     } else if (anchorExpandedRight) {
-      finalMainLeft =
-          viewport.width - tokens.horizontalMargin - groupWidth;
+      finalMainLeft = viewport.width - tokens.horizontalMargin - groupWidth;
     } else {
       finalMainLeft = (viewport.width - groupWidth) / 2;
     }

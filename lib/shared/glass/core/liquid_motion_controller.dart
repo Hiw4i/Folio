@@ -14,7 +14,7 @@ abstract class LiquidMotionController extends ChangeNotifier {
   LiquidMotionController({TickerProvider? vsync}) {
     final ticker = vsync?.createTicker(_onTick);
     _ticker = ticker;
-    ticker?.start();
+    // Start only when work is requested; never override TickerMode.muted.
   }
 
   static const double fixedStep = 1 / 120;
@@ -32,8 +32,24 @@ abstract class LiquidMotionController extends ChangeNotifier {
 
   @protected
   void wake() {
-    _ticker?.muted = false;
+    final ticker = _ticker;
+    if (ticker == null || ticker.isActive) {
+      return;
+    }
+    _lastTick = null;
+    _accumulator = 0;
+    ticker.start();
   }
+
+  @protected
+  void stopSimulation() {
+    _ticker?.stop();
+    _lastTick = null;
+    _accumulator = 0;
+  }
+
+  @visibleForTesting
+  bool get isTicking => _ticker?.isActive ?? false;
 
   /// Adaptive backdrop clarity: 1.0 at rest (full [GlassTokens.blurSigma]),
   /// easing down while the material moves fast. Subclasses feed it inside
@@ -102,7 +118,7 @@ abstract class LiquidMotionController extends ChangeNotifier {
       notifyListeners();
     }
     if (isAtRest) {
-      _ticker?.muted = true;
+      stopSimulation();
     }
   }
 

@@ -49,10 +49,7 @@ void main() {
 
     // Mirror shows the same query through the GPU black/white pipeline
     // (outlined fallback in the test env without shader filters).
-    expect(
-      find.widgetWithText(AdaptiveGlassText, 'hello'),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(AdaptiveGlassText, 'hello'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
