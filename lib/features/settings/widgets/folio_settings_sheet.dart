@@ -4,6 +4,7 @@ import '../../../shared/glass/surface/glass_panel.dart';
 import '../../../shared/settings/folio_settings_controller.dart';
 import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/widgets/folio_bottom_sheet.dart';
 
 Future<void> showFolioSettingsSheet(BuildContext context) async {
   final controller = FolioSettingsScope.maybeControllerOf(context);
@@ -11,14 +12,8 @@ Future<void> showFolioSettingsSheet(BuildContext context) async {
     return;
   }
   FocusManager.instance.primaryFocus?.unfocus();
-  await showModalBottomSheet<void>(
+  await FolioBottomSheet.show<void>(
     context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x66000000),
-    elevation: 0,
-    isScrollControlled: true,
-    useSafeArea: true,
-    constraints: const BoxConstraints(maxWidth: 640),
     builder: (context) => FolioSettingsSheet(controller: controller),
   );
 }
@@ -45,74 +40,71 @@ class FolioSettingsSheet extends StatelessWidget {
             maxHeight: MediaQuery.sizeOf(context).height * 0.85,
           ),
           child: GlassPanel(
-            borderRadius: 28,
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-                child: AnimatedBuilder(
-                  animation: controller,
-                  builder: (context, child) => Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Center(
-                        child: Container(
-                          width: 34,
-                          height: 4,
-                          margin: const EdgeInsets.only(bottom: 24),
-                          decoration: BoxDecoration(
-                            color: const Color(0x55FFFFFF),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
+            borderRadius: FolioBottomSheet.cornerRadius,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              child: AnimatedBuilder(
+                animation: controller,
+                builder: (context, child) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Center(
+                      child: Container(
+                        width: 34,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 24),
+                        decoration: BoxDecoration(
+                          color: const Color(0x55FFFFFF),
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
+                    ),
+                    const Text(
+                      'Settings',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 24,
+                        fontWeight: FontWeight.w600,
+                        color: FolioColors.textPrimary,
+                        decoration: TextDecoration.none,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _EffectSwitch(
+                      switchKey: const ValueKey<String>('settings_blur'),
+                      title: 'Blur',
+                      description: 'Frosted glass backgrounds',
+                      value: controller.settings.blurEnabled,
+                      onChanged: controller.setBlurEnabled,
+                    ),
+                    const SizedBox(height: 8),
+                    _EffectSwitch(
+                      switchKey: const ValueKey<String>(
+                        'settings_liquid_motion',
+                      ),
+                      title: 'Liquid motion',
+                      description: 'Stretching and spring effects',
+                      value: controller.settings.liquidMotionEnabled,
+                      onChanged: controller.setLiquidMotionEnabled,
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Turn off effects to reduce graphics load.',
+                      style: FolioText.metadata,
+                    ),
+                    if (controller.hasSaveError) ...<Widget>[
+                      const SizedBox(height: 12),
                       const Text(
-                        'Settings',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 24,
-                          fontWeight: FontWeight.w600,
-                          color: FolioColors.textPrimary,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      _EffectSwitch(
-                        switchKey: const ValueKey<String>('settings_blur'),
-                        title: 'Blur',
-                        description: 'Frosted glass backgrounds',
-                        value: controller.settings.blurEnabled,
-                        onChanged: controller.setBlurEnabled,
-                      ),
-                      const SizedBox(height: 8),
-                      _EffectSwitch(
-                        switchKey: const ValueKey<String>(
-                          'settings_liquid_motion',
-                        ),
-                        title: 'Liquid motion',
-                        description: 'Stretching and spring effects',
-                        value: controller.settings.liquidMotionEnabled,
-                        onChanged: controller.setLiquidMotionEnabled,
-                      ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Turn off effects to reduce graphics load.',
+                        'Could not save settings. Changes still apply for this session.',
                         style: FolioText.metadata,
                       ),
-                      if (controller.hasSaveError) ...<Widget>[
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Could not save settings. Changes still apply for this session.',
-                          style: FolioText.metadata,
-                        ),
-                        TextButton(
-                          onPressed: controller.retrySave,
-                          child: const Text('Retry'),
-                        ),
-                      ],
+                      TextButton(
+                        onPressed: controller.retrySave,
+                        child: const Text('Retry'),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),

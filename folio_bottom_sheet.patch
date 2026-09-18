@@ -1,0 +1,857 @@
+diff --git a/lib/features/settings/widgets/folio_settings_sheet.dart b/lib/features/settings/widgets/folio_settings_sheet.dart
+index a1711f1..33d4fbd 100644
+--- a/lib/features/settings/widgets/folio_settings_sheet.dart
++++ b/lib/features/settings/widgets/folio_settings_sheet.dart
+@@ -4,6 +4,7 @@ import '../../../shared/glass/surface/glass_panel.dart';
+ import '../../../shared/settings/folio_settings_controller.dart';
+ import '../../../shared/settings/folio_settings_scope.dart';
+ import '../../../shared/theme/folio_theme.dart';
++import '../../../shared/widgets/folio_bottom_sheet.dart';
+ 
+ Future<void> showFolioSettingsSheet(BuildContext context) async {
+   final controller = FolioSettingsScope.maybeControllerOf(context);
+@@ -11,14 +12,8 @@ Future<void> showFolioSettingsSheet(BuildContext context) async {
+     return;
+   }
+   FocusManager.instance.primaryFocus?.unfocus();
+-  await showModalBottomSheet<void>(
++  await FolioBottomSheet.show<void>(
+     context: context,
+-    backgroundColor: Colors.transparent,
+-    barrierColor: const Color(0x66000000),
+-    elevation: 0,
+-    isScrollControlled: true,
+-    useSafeArea: true,
+-    constraints: const BoxConstraints(maxWidth: 640),
+     builder: (context) => FolioSettingsSheet(controller: controller),
+   );
+ }
+@@ -45,74 +40,71 @@ class FolioSettingsSheet extends StatelessWidget {
+             maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+           ),
+           child: GlassPanel(
+-            borderRadius: 28,
+-            child: SafeArea(
+-              top: false,
+-              child: SingleChildScrollView(
+-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+-                child: AnimatedBuilder(
+-                  animation: controller,
+-                  builder: (context, child) => Column(
+-                    mainAxisSize: MainAxisSize.min,
+-                    crossAxisAlignment: CrossAxisAlignment.start,
+-                    children: <Widget>[
+-                      Center(
+-                        child: Container(
+-                          width: 34,
+-                          height: 4,
+-                          margin: const EdgeInsets.only(bottom: 24),
+-                          decoration: BoxDecoration(
+-                            color: const Color(0x55FFFFFF),
+-                            borderRadius: BorderRadius.circular(2),
+-                          ),
++            borderRadius: FolioBottomSheet.cornerRadius,
++            child: SingleChildScrollView(
++              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
++              child: AnimatedBuilder(
++                animation: controller,
++                builder: (context, child) => Column(
++                  mainAxisSize: MainAxisSize.min,
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: <Widget>[
++                    Center(
++                      child: Container(
++                        width: 34,
++                        height: 4,
++                        margin: const EdgeInsets.only(bottom: 24),
++                        decoration: BoxDecoration(
++                          color: const Color(0x55FFFFFF),
++                          borderRadius: BorderRadius.circular(2),
+                         ),
+                       ),
+-                      const Text(
+-                        'Settings',
+-                        style: TextStyle(
+-                          fontFamily: 'Inter',
+-                          fontSize: 24,
+-                          fontWeight: FontWeight.w600,
+-                          color: FolioColors.textPrimary,
+-                          decoration: TextDecoration.none,
+-                        ),
++                    ),
++                    const Text(
++                      'Settings',
++                      style: TextStyle(
++                        fontFamily: 'Inter',
++                        fontSize: 24,
++                        fontWeight: FontWeight.w600,
++                        color: FolioColors.textPrimary,
++                        decoration: TextDecoration.none,
+                       ),
+-                      const SizedBox(height: 18),
+-                      _EffectSwitch(
+-                        switchKey: const ValueKey<String>('settings_blur'),
+-                        title: 'Blur',
+-                        description: 'Frosted glass backgrounds',
+-                        value: controller.settings.blurEnabled,
+-                        onChanged: controller.setBlurEnabled,
+-                      ),
+-                      const SizedBox(height: 8),
+-                      _EffectSwitch(
+-                        switchKey: const ValueKey<String>(
+-                          'settings_liquid_motion',
+-                        ),
+-                        title: 'Liquid motion',
+-                        description: 'Stretching and spring effects',
+-                        value: controller.settings.liquidMotionEnabled,
+-                        onChanged: controller.setLiquidMotionEnabled,
++                    ),
++                    const SizedBox(height: 18),
++                    _EffectSwitch(
++                      switchKey: const ValueKey<String>('settings_blur'),
++                      title: 'Blur',
++                      description: 'Frosted glass backgrounds',
++                      value: controller.settings.blurEnabled,
++                      onChanged: controller.setBlurEnabled,
++                    ),
++                    const SizedBox(height: 8),
++                    _EffectSwitch(
++                      switchKey: const ValueKey<String>(
++                        'settings_liquid_motion',
+                       ),
+-                      const SizedBox(height: 18),
++                      title: 'Liquid motion',
++                      description: 'Stretching and spring effects',
++                      value: controller.settings.liquidMotionEnabled,
++                      onChanged: controller.setLiquidMotionEnabled,
++                    ),
++                    const SizedBox(height: 18),
++                    const Text(
++                      'Turn off effects to reduce graphics load.',
++                      style: FolioText.metadata,
++                    ),
++                    if (controller.hasSaveError) ...<Widget>[
++                      const SizedBox(height: 12),
+                       const Text(
+-                        'Turn off effects to reduce graphics load.',
++                        'Could not save settings. Changes still apply for this session.',
+                         style: FolioText.metadata,
+                       ),
+-                      if (controller.hasSaveError) ...<Widget>[
+-                        const SizedBox(height: 12),
+-                        const Text(
+-                          'Could not save settings. Changes still apply for this session.',
+-                          style: FolioText.metadata,
+-                        ),
+-                        TextButton(
+-                          onPressed: controller.retrySave,
+-                          child: const Text('Retry'),
+-                        ),
+-                      ],
++                      TextButton(
++                        onPressed: controller.retrySave,
++                        child: const Text('Retry'),
++                      ),
+                     ],
+-                  ),
++                  ],
+                 ),
+               ),
+             ),
+diff --git a/lib/shared/widgets/folio_bottom_sheet.dart b/lib/shared/widgets/folio_bottom_sheet.dart
+new file mode 100644
+index 0000000..c7fbca3
+--- /dev/null
++++ b/lib/shared/widgets/folio_bottom_sheet.dart
+@@ -0,0 +1,261 @@
++import 'dart:math' as math;
++import 'dart:ui' as ui;
++
++import 'package:flutter/material.dart';
++
++import '../settings/folio_settings_scope.dart';
++
++/// A floating bottom sheet with the reference dialog's entrance and backdrop.
++/// The caller owns the surface and content; there is no fullscreen presentation.
++abstract final class FolioBottomSheet {
++  static const double cornerRadius = 32;
++
++  static Future<T?> show<T>({
++    required BuildContext context,
++    required WidgetBuilder builder,
++  }) async {
++    if (!context.mounted) return null;
++
++    final route = _FolioBottomSheetRoute<T>(
++      builder: builder,
++      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
++      disableAnimations: MediaQuery.disableAnimationsOf(context),
++    );
++    final result = await Navigator.of(context).push<T>(route);
++    // Keep the caller's modal guard active until the sheet AND blur are gone.
++    await route.completed;
++    return result;
++  }
++}
++
++class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
++  _FolioBottomSheetRoute({
++    required this.builder,
++    required this.barrierLabel,
++    required this.disableAnimations,
++  });
++
++  static const _openDuration = Duration(milliseconds: 700);
++  static const _closeDuration = Duration(milliseconds: 350);
++  // Use the nominal durations, including when reduced motion is enabled.
++  static const _backdropRatio = 350 / 700;
++  static final _fullBlur = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12);
++
++  final WidgetBuilder builder;
++  final bool disableAnimations;
++
++  @override
++  final String barrierLabel;
++
++  @override
++  bool get barrierDismissible => true;
++
++  @override
++  Color get barrierColor => Colors.transparent;
++
++  @override
++  Duration get transitionDuration =>
++      disableAnimations ? Duration.zero : _openDuration;
++
++  @override
++  Duration get reverseTransitionDuration =>
++      disableAnimations ? Duration.zero : _closeDuration;
++
++  @override
++  Widget buildModalBarrier() {
++    return AnimatedBuilder(
++      animation: animation!,
++      // Retain Flutter's barrier hit testing, dismissal and accessibility.
++      child: super.buildModalBarrier(),
++      builder: (context, child) {
++        final t = offstage
++            ? 0.0
++            : Curves.easeOut.transform(
++                (animation!.value / _backdropRatio).clamp(0.0, 1.0),
++              );
++        final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
++        return ClipRect(
++          child: BackdropFilter(
++            key: const ValueKey<String>('folio_sheet_backdrop'),
++            enabled: blurEnabled && t > 0,
++            filter: blurEnabled && t > 0 && t < 1
++                ? ui.ImageFilter.blur(sigmaX: 12 * t, sigmaY: 12 * t)
++                : _fullBlur,
++            child: ColoredBox(
++              color: Colors.black.withValues(alpha: 0.3 * t),
++              child: child,
++            ),
++          ),
++        );
++      },
++    );
++  }
++
++  @override
++  Widget buildPage(
++    BuildContext context,
++    Animation<double> animation,
++    Animation<double> secondaryAnimation,
++  ) {
++    return _BottomSheetPosition(
++      animation: animation,
++      controller: controller!,
++      onClosing: () {
++        if (isCurrent) navigator?.pop();
++      },
++      disableAnimations: disableAnimations,
++      child: builder(context),
++    );
++  }
++
++  @override
++  Widget buildTransitions(
++    BuildContext context,
++    Animation<double> animation,
++    Animation<double> secondaryAnimation,
++    Widget child,
++  ) => child;
++}
++
++class _BottomSheetPosition extends StatefulWidget {
++  const _BottomSheetPosition({
++    required this.animation,
++    required this.controller,
++    required this.onClosing,
++    required this.disableAnimations,
++    required this.child,
++  });
++
++  final Animation<double> animation;
++  final AnimationController controller;
++  final VoidCallback onClosing;
++  final bool disableAnimations;
++  final Widget child;
++
++  @override
++  State<_BottomSheetPosition> createState() => _BottomSheetPositionState();
++}
++
++class _BottomSheetPositionState extends State<_BottomSheetPosition> {
++  late final CurvedAnimation _position;
++  Curve? _dragCurve;
++
++  @override
++  void initState() {
++    super.initState();
++    // Keep one curve for the route lifetime, also when an opening is reversed.
++    _position = CurvedAnimation(
++      parent: widget.animation,
++      curve: const Cubic(0.24, 1.2, 0.2, 1.0),
++      reverseCurve: Curves.easeInOutCubic,
++    );
++    widget.animation.addStatusListener(_onStatus);
++  }
++
++  void _onStatus(AnimationStatus status) {
++    if (status == AnimationStatus.completed && _dragCurve != null) {
++      setState(() => _dragCurve = null);
++    }
++  }
++
++  void _onDragStart(DragStartDetails details) {
++    setState(() => _dragCurve = Curves.linear);
++  }
++
++  void _onDragEnd(DragEndDetails details, {required bool isClosing}) {
++    final start = widget.animation.value;
++    setState(() {
++      _dragCurve = start >= 1
++          ? null
++          : isClosing
++          ? Curves.linear
++          : _DragReleaseCurve(start);
++    });
++  }
++
++  @override
++  void dispose() {
++    widget.animation.removeStatusListener(_onStatus);
++    _position.dispose();
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final media = MediaQuery.of(context);
++    final bottom = math.max(media.viewPadding.bottom, media.viewInsets.bottom);
++    return Align(
++      alignment: Alignment.bottomCenter,
++      child: AnimatedPadding(
++        duration: widget.disableAnimations
++            ? Duration.zero
++            : const Duration(milliseconds: 220),
++        curve: Curves.easeOutCubic,
++        padding: EdgeInsets.fromLTRB(
++          16 + media.viewPadding.left,
++          16 + media.viewPadding.top,
++          16 + media.viewPadding.right,
++          16 + bottom,
++        ),
++        // Keep Folio's existing width cap, without switching to a dialog.
++        child: ConstrainedBox(
++          constraints: const BoxConstraints(maxWidth: 640),
++          child: AnimatedBuilder(
++            animation: widget.animation,
++            child: SizedBox(width: double.infinity, child: widget.child),
++            builder: (context, child) {
++              // Retain Folio's ordinary drag-to-dismiss. Only a user gesture
++              // follows the sheet's height; route transitions use the exact
++              // 750px reference travel and are not made screen-adaptive.
++              final drag = _dragCurve == null
++                  ? 0.0
++                  : 1 - _dragCurve!.transform(widget.animation.value);
++              return Transform.translate(
++                key: const ValueKey<String>('folio_sheet_position'),
++                offset: Offset(
++                  0,
++                  _dragCurve == null
++                      ? 750 * (1 - _position.value)
++                      : (16 + bottom) * drag,
++                ),
++                child: FractionalTranslation(
++                  translation: Offset(0, drag),
++                  child: BottomSheet(
++                    animationController: widget.controller,
++                    enableDrag:
++                        widget.animation.status == AnimationStatus.completed ||
++                        (_dragCurve != null &&
++                            widget.animation.status != AnimationStatus.reverse),
++                    showDragHandle: false,
++                    onDragStart: _onDragStart,
++                    onDragEnd: _onDragEnd,
++                    onClosing: widget.onClosing,
++                    backgroundColor: Colors.transparent,
++                    elevation: 0,
++                    clipBehavior: Clip.none,
++                    constraints: const BoxConstraints(),
++                    builder: (context) => child!,
++                  ),
++                ),
++              );
++            },
++          ),
++        ),
++      ),
++    );
++  }
++}
++
++/// Continue a cancelled dismissal from the release position without a jump.
++class _DragReleaseCurve extends Curve {
++  const _DragReleaseCurve(this.start);
++
++  final double start;
++
++  @override
++  double transformInternal(double t) {
++    if (t <= start || start >= 1) return t;
++    final remaining = (t - start) / (1 - start);
++    return start + (1 - start) * Curves.easeOutCubic.transform(remaining);
++  }
++}
+diff --git a/test/features/settings/folio_settings_sheet_transition_test.dart b/test/features/settings/folio_settings_sheet_transition_test.dart
+new file mode 100644
+index 0000000..f47479f
+--- /dev/null
++++ b/test/features/settings/folio_settings_sheet_transition_test.dart
+@@ -0,0 +1,424 @@
++import 'dart:ui' as ui;
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:folio/features/settings/widgets/folio_settings_sheet.dart';
++import 'package:folio/shared/glass/surface/glass_panel.dart';
++import 'package:folio/shared/settings/folio_settings.dart';
++import 'package:folio/shared/settings/folio_settings_controller.dart';
++import 'package:folio/shared/settings/folio_settings_scope.dart';
++
++import '../../support/memory_settings_store.dart';
++
++const _openingCurve = Cubic(0.24, 1.2, 0.2, 1.0);
++final _sheet = find.byType(FolioSettingsSheet);
++final _surface = find.byType(GlassPanel);
++final _backdrop = find.byKey(const ValueKey<String>('folio_sheet_backdrop'));
++final _position = find.byKey(const ValueKey<String>('folio_sheet_position'));
++
++void main() {
++  testWidgets('settings use a floating surface with four 32px corners', (
++    tester,
++  ) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    await tester.pumpAndSettle();
++
++    final rect = tester.getRect(_surface);
++    expect(rect.left, 16);
++    expect(rect.right, 384);
++    expect(rect.bottom, 824);
++    expect(rect.height, lessThan(840 * 0.85));
++    expect(tester.widget<GlassPanel>(_surface).borderRadius, 32);
++    final clip = find.descendant(of: _surface, matching: find.byType(ClipRRect));
++    expect(tester.widget<ClipRRect>(clip).borderRadius, BorderRadius.circular(32));
++    expect(find.byType(DraggableScrollableSheet), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('opening uses the reference curve, 700ms and 750px travel', (
++    tester,
++  ) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    final route = _route(tester);
++    expect(route.transitionDuration, const Duration(milliseconds: 700));
++    expect(_offset(tester), closeTo(750, 0.001));
++
++    var elapsed = 0;
++    for (final step in <int>[70, 105, 175, 175, 175]) {
++      elapsed += step;
++      await tester.pump(Duration(milliseconds: step));
++      final raw = elapsed / 700;
++      expect(route.animation!.value, closeTo(raw, 0.00001));
++      expect(
++        _offset(tester),
++        closeTo(750 * (1 - _openingCurve.transform(raw)), 0.001),
++      );
++      _expectBackdrop(tester, raw);
++    }
++    expect(_offset(tester), closeTo(0, 0.001));
++  });
++
++  testWidgets('close keeps the reference motion and late backdrop fade', (
++    tester,
++  ) async {
++    var completed = false;
++    await _pumpHost(tester, onClosed: () => completed = true);
++    await _open(tester);
++    await tester.pumpAndSettle();
++    final route = _route(tester);
++    expect(route.reverseTransitionDuration, const Duration(milliseconds: 350));
++
++    Navigator.of(tester.element(_sheet)).pop();
++    await tester.pump();
++    expect(completed, isFalse);
++    await tester.pump(const Duration(milliseconds: 175));
++    expect(route.animation!.value, closeTo(0.5, 0.00001));
++    expect(
++      _offset(tester),
++      closeTo(750 * (1 - Curves.easeInOutCubic.transform(0.5)), 0.001),
++    );
++    _expectBackdrop(tester, 0.5); // Still fully blurred halfway through closing.
++    expect(completed, isFalse);
++
++    await tester.pump(const Duration(microseconds: 87500));
++    expect(route.animation!.value, closeTo(0.25, 0.00001));
++    expect(
++      _offset(tester),
++      closeTo(750 * (1 - Curves.easeInOutCubic.transform(0.25)), 0.001),
++    );
++    _expectBackdrop(tester, 0.25);
++    expect(completed, isFalse);
++
++    await tester.pumpAndSettle();
++    expect(_sheet, findsNothing);
++    expect(_backdrop, findsNothing);
++    expect(completed, isTrue);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('Blur disables both filters without remounting the sheet', (
++    tester,
++  ) async {
++    final controller = await _pumpHost(tester);
++    await _open(tester);
++    await tester.pumpAndSettle();
++    final element = tester.element(_sheet);
++    final route = _route(tester);
++    final rect = tester.getRect(_surface);
++
++    await tester.tap(find.byKey(const ValueKey<String>('settings_blur')));
++    await tester.pumpAndSettle();
++    expect(controller.settings.blurEnabled, isFalse);
++    expect(controller.settings.liquidMotionEnabled, isTrue);
++    expect(
++      tester.widgetList<BackdropFilter>(find.byType(BackdropFilter))
++          .every((filter) => !filter.enabled),
++      isTrue,
++    );
++    _expectBackdrop(tester, 1, blurEnabled: false);
++    expect(tester.element(_sheet), same(element));
++    expect(tester.getRect(_surface), rect);
++    expect(route.animation!.value, 1);
++
++    await tester.tap(find.byKey(const ValueKey<String>('settings_blur')));
++    await tester.pumpAndSettle();
++    _expectBackdrop(tester, 1);
++    expect(tester.element(_sheet), same(element));
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('Liquid motion does not disable or restart the sheet transition', (
++    tester,
++  ) async {
++    final controller = await _pumpHost(
++      tester,
++      settings: const FolioSettings(liquidMotionEnabled: false),
++    );
++    await _open(tester);
++    final route = _route(tester);
++    expect(route.transitionDuration, const Duration(milliseconds: 700));
++    expect(route.reverseTransitionDuration, const Duration(milliseconds: 350));
++    await tester.pump(const Duration(milliseconds: 175));
++    final offset = _offset(tester);
++    _expectBackdrop(tester, 0.25);
++
++    controller.setLiquidMotionEnabled(true);
++    await tester.pump();
++    expect(_offset(tester), closeTo(offset, 0.001));
++    expect(route.animation!.value, closeTo(0.25, 0.00001));
++    await tester.pumpAndSettle();
++    expect(_offset(tester), closeTo(0, 0.001));
++  });
++
++  testWidgets('closing during opening does not jump to the reverse curve', (
++    tester,
++  ) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    await tester.pump(const Duration(milliseconds: 140));
++    final offset = _offset(tester);
++    final route = _route(tester);
++    Navigator.of(tester.element(_sheet)).pop();
++    await tester.pump();
++    expect(_offset(tester), closeTo(offset, 0.001));
++
++    await tester.pump(const Duration(milliseconds: 35));
++    expect(
++      _offset(tester),
++      closeTo(750 * (1 - _openingCurve.transform(route.animation!.value)), 0.001),
++    );
++    await tester.pumpAndSettle();
++    expect(_sheet, findsNothing);
++    expect(tester.binding.transientCallbackCount, 0);
++    expect(tester.takeException(), isNull);
++  });
++
++  for (final size in <Size>[const Size(900, 1000), const Size(900, 480)]) {
++    testWidgets('stays a bottom sheet on a ${size.width}x${size.height} screen', (
++      tester,
++    ) async {
++      await _pumpHost(tester, size: size);
++      await _open(tester);
++      await tester.pumpAndSettle();
++      final rect = tester.getRect(_surface);
++      expect(rect.width, 640); // The original Folio width limit is retained.
++      expect(rect.center.dx, size.width / 2);
++      expect(rect.bottom, size.height - 16);
++      expect(rect.height, lessThanOrEqualTo(size.height * 0.85));
++      expect(find.byType(Dialog), findsNothing);
++      expect(find.byType(DraggableScrollableSheet), findsNothing);
++      expect(tester.takeException(), isNull);
++    });
++  }
++
++  testWidgets('large text remains scrollable above the keyboard and safe area', (
++    tester,
++  ) async {
++    final controller = await _pumpHost(
++      tester,
++      size: const Size(280, 600),
++      viewPadding: const EdgeInsets.only(top: 24, bottom: 24),
++      viewInsets: const EdgeInsets.only(bottom: 220),
++      textScaler: const TextScaler.linear(1.6),
++    );
++    await _open(tester);
++    await tester.pumpAndSettle();
++    final rect = tester.getRect(_surface);
++    expect(rect.left, 16);
++    expect(rect.right, 264);
++    expect(rect.bottom, 600 - 220 - 16);
++    expect(rect.top, greaterThanOrEqualTo(24 + 16));
++
++    final motion = find.byKey(const ValueKey<String>('settings_liquid_motion'));
++    await tester.ensureVisible(motion);
++    await tester.pumpAndSettle();
++    await tester.tap(motion);
++    await tester.pumpAndSettle();
++    expect(controller.settings.liquidMotionEnabled, isFalse);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('safe area is outside the surface and is not counted twice', (
++    tester,
++  ) async {
++    await _pumpHost(tester, viewPadding: const EdgeInsets.only(bottom: 24));
++    await _open(tester);
++    await tester.pumpAndSettle();
++    expect(tester.getRect(_surface).bottom, 840 - 24 - 16);
++    expect(
++      find.descendant(of: _surface, matching: find.byType(SafeArea)),
++      findsNothing,
++    );
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('the standard dismissible barrier and system Back close the sheet', (
++    tester,
++  ) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    await tester.pumpAndSettle();
++    final barrier = find.descendant(
++      of: _backdrop,
++      matching: find.byType(ModalBarrier),
++    );
++    expect(tester.widget<ModalBarrier>(barrier).dismissible, isTrue);
++    expect(tester.widget<ModalBarrier>(barrier).semanticsLabel, isNotEmpty);
++    await tester.tapAt(const Offset(20, 40));
++    await tester.pumpAndSettle();
++    expect(_sheet, findsNothing);
++
++    await _open(tester);
++    await tester.pumpAndSettle();
++    await tester.binding.handlePopRoute();
++    await tester.pumpAndSettle();
++    expect(_sheet, findsNothing);
++    expect(find.text('Open settings'), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('ordinary downward swipe dismissal is retained', (tester) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    await tester.pumpAndSettle();
++    final rect = tester.getRect(_surface);
++    await tester.flingFrom(
++      Offset(rect.center.dx, rect.top + 18),
++      const Offset(0, 180),
++      1000,
++    );
++    await tester.pumpAndSettle();
++    expect(_sheet, findsNothing);
++    expect(_backdrop, findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('an upward drag does not expand the surface', (tester) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    await tester.pumpAndSettle();
++    final rect = tester.getRect(_surface);
++    await tester.dragFrom(
++      Offset(rect.center.dx, rect.top + 18),
++      const Offset(0, -120),
++    );
++    await tester.pumpAndSettle();
++    expect(tester.getRect(_surface), rect);
++    expect(find.byType(DraggableScrollableSheet), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('a cancelled short drag returns without remounting content', (
++    tester,
++  ) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    await tester.pumpAndSettle();
++    final rect = tester.getRect(_surface);
++    final element = tester.element(_sheet);
++    final gesture = await tester.startGesture(
++      Offset(rect.center.dx, rect.top + 18),
++    );
++    await gesture.moveBy(const Offset(0, 28));
++    await tester.pump(const Duration(milliseconds: 100));
++    await gesture.moveBy(const Offset(0, 12));
++    await tester.pump(const Duration(milliseconds: 200));
++    await gesture.up();
++    await tester.pumpAndSettle();
++    expect(tester.getRect(_surface), rect);
++    expect(tester.element(_sheet), same(element));
++    expect(_offset(tester), closeTo(0, 0.001));
++    expect(tester.binding.transientCallbackCount, 0);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('system reduced motion avoids a zero-duration ratio and tickers', (
++    tester,
++  ) async {
++    await _pumpHost(tester, disableAnimations: true);
++    await _open(tester);
++    await tester.pumpAndSettle();
++    expect(_route(tester).transitionDuration, Duration.zero);
++    expect(_route(tester).reverseTransitionDuration, Duration.zero);
++    expect(_offset(tester), 0);
++    _expectBackdrop(tester, 1);
++    expect(tester.binding.transientCallbackCount, 0);
++    await tester.binding.handlePopRoute();
++    await tester.pumpAndSettle();
++    expect(_sheet, findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('removing the app during opening disposes transition listeners', (
++    tester,
++  ) async {
++    await _pumpHost(tester);
++    await _open(tester);
++    await tester.pump(const Duration(milliseconds: 90));
++    await tester.pumpWidget(const SizedBox.shrink());
++    await tester.pumpAndSettle();
++    expect(tester.binding.transientCallbackCount, 0);
++    expect(tester.takeException(), isNull);
++  });
++}
++
++Future<FolioSettingsController> _pumpHost(
++  WidgetTester tester, {
++  Size size = const Size(400, 840),
++  FolioSettings settings = const FolioSettings(),
++  EdgeInsets viewPadding = EdgeInsets.zero,
++  EdgeInsets viewInsets = EdgeInsets.zero,
++  TextScaler textScaler = TextScaler.noScaling,
++  bool disableAnimations = false,
++  VoidCallback? onClosed,
++}) async {
++  tester.view.devicePixelRatio = 1;
++  tester.view.physicalSize = size;
++  addTearDown(tester.view.resetDevicePixelRatio);
++  addTearDown(tester.view.resetPhysicalSize);
++  final controller = FolioSettingsController(store: MemorySettingsStore(settings));
++  await controller.load();
++  addTearDown(() async {
++    await tester.pumpWidget(const SizedBox.shrink());
++    controller.dispose();
++  });
++  await tester.pumpWidget(
++    FolioSettingsScope(
++      controller: controller,
++      child: MaterialApp(
++        builder: (context, child) => MediaQuery(
++          data: MediaQuery.of(context).copyWith(
++            viewPadding: viewPadding,
++            padding: viewPadding,
++            viewInsets: viewInsets,
++            textScaler: textScaler,
++            disableAnimations: disableAnimations,
++          ),
++          child: child!,
++        ),
++        home: Scaffold(
++          body: Builder(
++            builder: (context) => Center(
++              child: TextButton(
++                onPressed: () async {
++                  await showFolioSettingsSheet(context);
++                  onClosed?.call();
++                },
++                child: const Text('Open settings'),
++              ),
++            ),
++          ),
++        ),
++      ),
++    ),
++  );
++  await tester.pumpAndSettle();
++  return controller;
++}
++
++Future<void> _open(WidgetTester tester) async {
++  await tester.tap(find.text('Open settings'));
++  await tester.pump();
++  expect(_sheet, findsOneWidget);
++}
++
++ModalRoute<dynamic> _route(WidgetTester tester) =>
++    ModalRoute.of(tester.element(_sheet))!;
++
++double _offset(WidgetTester tester) =>
++    tester.widget<Transform>(_position).transform.storage[13];
++
++void _expectBackdrop(
++  WidgetTester tester,
++  double raw, {
++  bool blurEnabled = true,
++}) {
++  final t = Curves.easeOut.transform((raw / 0.5).clamp(0.0, 1.0));
++  final filter = tester.widget<BackdropFilter>(_backdrop);
++  expect(filter.enabled, blurEnabled && t > 0);
++  final sigma = blurEnabled && t > 0 && t < 1 ? 12 * t : 12.0;
++  expect(filter.filter, ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma));
++  expect((filter.child! as ColoredBox).color.a, closeTo(0.3 * t, 0.00001));
++}

@@ -1,12 +1,15 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+
 import 'dart:async';
+
 import 'package:flutter/material.dart'
     show
         DefaultMaterialLocalizations,
         DefaultSelectionStyle,
         TextSelectionTheme,
         TextSelectionThemeData;
+
 import '../features/library/data/file_library_repository.dart';
 import '../features/library/data/library_repository.dart';
 import '../features/library/logic/library_controller.dart';
@@ -32,8 +35,6 @@ void main() {
   );
   runApp(const FolioApp());
 }
-
-
 
 class FolioApp extends StatefulWidget {
   const FolioApp({
