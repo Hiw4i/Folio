@@ -65,7 +65,10 @@ class TextDocumentView extends StatelessWidget {
           physics: const BouncingScrollPhysics(
             decelerationRate: ScrollDecelerationRate.fast,
           ),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          // onDrag unfocuses the selection region and text inputs, clearing
+          // the selection on the first scroll update. This is a read-only
+          // viewport; search owns its separate input/focus lifecycle.
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
           padding: EdgeInsets.fromLTRB(
             24,
             MediaQuery.viewPaddingOf(context).top + 104,

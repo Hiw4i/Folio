@@ -12,6 +12,7 @@ import 'adaptive_glass_foreground.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
 import 'liquid_morphing_control.dart';
+import 'liquid_motion_panel.dart';
 
 /// Universal liquid substance: one widget for every liquid-glass case.
 ///
@@ -19,7 +20,7 @@ import 'liquid_morphing_control.dart';
 ///   [GlassMotionController] (plain buttons run it with `morphEnabled: false`,
 ///   i.e. a parked collapsed menu button);
 /// - painting is always [GlassShell] (deformed) or [LiquidCase] (static);
-/// - foreground always follows via [LiquidContent];
+/// - fixed/morph foreground follows via [LiquidContent]; panel bodies stay put;
 /// - hit testing always absorbs behind the material via [GlassTouchShield]
 ///   in single-action mode.
 ///
@@ -34,8 +35,8 @@ import 'liquid_morphing_control.dart';
 ///   toolbar pill), or a passive spot (`child` non-interactive).
 /// - [LiquidGlass.morph]: the same substance flowing between [collapsed] and
 ///   [expanded] rects; content cross-fades with velocity blur.
-/// - [LiquidGlass.panel]: static (non-interactive) mode — the former
-///   `GlassPanel` look, no ticker, no physics.
+/// - [LiquidGlass.panel]: content-sized panel; static by default. Opt into
+///   [liquidMotion] for the same shell/physics with a stationary inner body.
 class LiquidGlass extends StatelessWidget {
   const LiquidGlass.fixed({
     required this.child,
@@ -54,7 +55,8 @@ class LiquidGlass extends StatelessWidget {
        collapsedHitKey = null,
        onExpansionChanged = null,
        borderRadius = null,
-       padding = EdgeInsets.zero;
+       padding = EdgeInsets.zero,
+       liquidMotion = false;
 
   const LiquidGlass.morph({
     required this.geometryBuilder,
@@ -73,12 +75,14 @@ class LiquidGlass extends StatelessWidget {
        semanticsLabel = null,
        shapeTokens = const LiquidShapeTokens(),
        borderRadius = null,
-       padding = EdgeInsets.zero;
+       padding = EdgeInsets.zero,
+       liquidMotion = false;
 
   const LiquidGlass.panel({
     required this.child,
     this.borderRadius = 24,
     this.padding = EdgeInsets.zero,
+    this.liquidMotion = false,
     super.key,
   }) : _kind = _LiquidKind.panel,
        size = null,
@@ -117,10 +121,20 @@ class LiquidGlass extends StatelessWidget {
   final double? borderRadius;
   final EdgeInsetsGeometry padding;
 
+  /// Deform only a panel's outer material; leave its inner content unchanged.
+  final bool liquidMotion;
+
   @override
   Widget build(BuildContext context) {
     switch (_kind) {
       case _LiquidKind.panel:
+        if (liquidMotion) {
+          return LiquidMotionPanel(
+            borderRadius: borderRadius ?? 24,
+            padding: padding,
+            child: child!,
+          );
+        }
         return LiquidCase(
           borderRadius: borderRadius ?? 24,
           padding: padding,

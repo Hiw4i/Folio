@@ -1,26 +1,29 @@
 import 'package:flutter/widgets.dart';
 
-import 'liquid_surface.dart';
+import '../widgets/liquid_container.dart';
 
-/// Static liquid panel: non-interactive mode of the same liquid library.
+/// Content-sized panel backed by the shared liquid library.
 ///
-/// Shares blur/shadow/rim with every other surface via [LiquidCase]; only
-/// the opaque fill differs (readability for text content).
+/// Static by default. [liquidMotion] opts into the existing deforming material
+/// while keeping inner cards, controls and scrolling stationary.
 class GlassPanel extends StatelessWidget {
   const GlassPanel({
     required this.child,
     this.borderRadius = 24,
     this.padding = EdgeInsets.zero,
+    this.liquidMotion = false,
     super.key,
   });
 
   final Widget child;
   final double borderRadius;
   final EdgeInsetsGeometry padding;
+  final bool liquidMotion;
 
   @override
   Widget build(BuildContext context) {
-    return LiquidCase(
+    return LiquidGlass.panel(
+      liquidMotion: liquidMotion,
       borderRadius: borderRadius,
       padding: padding,
       child: child,

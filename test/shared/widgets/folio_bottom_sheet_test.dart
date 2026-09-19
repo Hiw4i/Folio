@@ -6,6 +6,7 @@ import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/reader/widgets/file_info_sheet.dart';
 import 'package:folio/features/settings/widgets/folio_settings_sheet.dart';
 import 'package:folio/shared/glass/surface/glass_panel.dart';
+import 'package:folio/shared/glass/surface/glass_shell.dart';
 import 'package:folio/shared/settings/folio_settings.dart';
 import 'package:folio/shared/settings/folio_settings_controller.dart';
 import 'package:folio/shared/settings/folio_settings_scope.dart';
@@ -38,6 +39,11 @@ void main() {
         expect(find.byType(FolioSheetCard), findsWidgets);
         expect(find.byType(FolioSheetDivider), findsWidgets);
         expect(tester.widget<GlassPanel>(_surface).borderRadius, 32);
+        expect(tester.widget<GlassPanel>(_surface).liquidMotion, isTrue);
+        expect(
+          find.descendant(of: _surface, matching: find.byType(GlassShell)),
+          findsOneWidget,
+        );
         final rect = tester.getRect(_surface);
         expect(rect.left, 16);
         expect(rect.right, 384);
@@ -196,6 +202,48 @@ void main() {
           expect(find.text('Open sheet'), findsOneWidget);
           expect(tester.takeException(), isNull);
         }
+      });
+
+      testWidgets('liquid shell responds without moving its inner cards', (
+        tester,
+      ) async {
+        final settings = await _pumpHost(tester, sheet);
+        await _open(tester);
+        await tester.pumpAndSettle();
+        final shell = find.descendant(
+          of: _surface,
+          matching: find.byType(GlassShell),
+        );
+        final card = find.byType(FolioSheetCard).first;
+        final element = tester.element(card);
+        final cardRect = tester.getRect(card);
+        final rect = tester.getRect(_surface);
+        final gesture = await tester.startGesture(
+          Offset(rect.center.dx, rect.top + 16),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        // A horizontal pull exercises shell physics without dismissing vertically.
+        await gesture.moveBy(const Offset(40, 0));
+        await tester.pump(const Duration(milliseconds: 80));
+        expect(tester.widget<GlassShell>(shell).press, greaterThan(0));
+        expect(tester.getRect(card), cardRect);
+        expect(tester.element(card), same(element));
+        settings.setLiquidMotionEnabled(false);
+        await tester.pumpAndSettle();
+        expect(tester.widget<GlassShell>(shell).press, 0);
+        expect(tester.element(card), same(element));
+        await gesture.up();
+        await tester.pumpAndSettle();
+        // Turning physics off must not turn off normal drag-to-dismiss.
+        await tester.flingFrom(
+          Offset(rect.center.dx, rect.top + 16),
+          const Offset(0, 180),
+          1000,
+        );
+        await tester.pumpAndSettle();
+        expect(_content, findsNothing);
+        expect(tester.takeException(), isNull);
       });
 
       testWidgets('system reduced motion leaves no transition tickers', (

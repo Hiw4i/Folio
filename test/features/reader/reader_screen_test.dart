@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart' show SelectionArea, SelectionAreaState;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -73,7 +72,10 @@ void main() {
       find.byKey(const ValueKey<String>('reader_content')),
       findsOneWidget,
     );
-    expect(find.byType(SelectionArea), findsWidgets);
+    expect(
+      find.byWidgetPredicate((widget) => widget is SelectableRegion),
+      findsWidgets,
+    );
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -119,17 +121,17 @@ void main() {
   ) async {
     await openReader(tester);
 
-    final selectionArea = find.byType(SelectionArea).first;
-    final selectionState = tester.state<SelectionAreaState>(selectionArea);
-    selectionState.selectableRegion.selectAll();
+    final selectionArea = find.byWidgetPredicate((widget) => widget is SelectableRegion).first;
+    final selectionState = tester.state<SelectableRegionState>(selectionArea);
+    selectionState.selectAll();
     await tester.pump();
     expect(
-      selectionState.selectableRegion.contextMenuButtonItems.any(
+      selectionState.contextMenuButtonItems.any(
         (item) => item.type == ContextMenuButtonType.copy,
       ),
       isTrue,
     );
-    selectionState.selectableRegion.clearSelection();
+    selectionState.clearSelection();
   });
 
   testWidgets('search arrows reveal exact matches across lazy text chunks', (

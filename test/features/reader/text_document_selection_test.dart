@@ -9,6 +9,10 @@ import 'package:folio/features/reader/text/widgets/text_document_selection.dart'
 import 'package:folio/shared/theme/folio_theme.dart';
 import 'package:folio/shared/selection/folio_selection_toolbar.dart';
 
+final _regionFinder = find.byWidgetPredicate(
+  (widget) => widget is SelectableRegion,
+);
+
 void main() {
   TextDocument document(String source, {bool markdown = false}) => TextDocument(
     text: source,
@@ -52,15 +56,15 @@ void main() {
     );
     addTearDown(() => tester.binding.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null));
-    final area = tester.state<SelectionAreaState>(find.byType(SelectionArea));
+    final region = tester.state<SelectableRegionState>(_regionFinder);
     if (selectAll) {
-      area.selectableRegion.selectAll(SelectionChangedCause.toolbar);
+      region.selectAll(SelectionChangedCause.toolbar);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey<String>('folio_toolbar_copy')));
     } else {
-      final config = tester.widget<SelectionArea>(find.byType(SelectionArea));
+      final config = tester.widget<SelectableRegion>(_regionFinder);
       final menu = config.contextMenuBuilder!(
-        tester.element(find.byType(SelectionArea)), area.selectableRegion,
+        tester.element(_regionFinder), region,
       ) as FolioSelectionToolbar;
       menu.buttonItems.firstWhere((item) => item.type == ContextMenuButtonType.copy).onPressed!();
     }
@@ -82,7 +86,7 @@ void main() {
         },
       ),
     );
-    expect(find.byType(SelectionArea), findsOneWidget);
+    expect(_regionFinder, findsOneWidget);
     expect(built, lessThan(40));
     expect(await copyCurrentSelection(tester, selectAll: true), lines.join('\n\n'));
     expect(built, lessThan(40));
@@ -96,7 +100,7 @@ void main() {
         child: MarkdownBody(data: source, selectable: false),
       ),
     );
-    expect(find.byType(SelectionArea), findsOneWidget);
+    expect(_regionFinder, findsOneWidget);
     expect(find.byType(SelectableText), findsNothing);
     final copy = await copyCurrentSelection(tester, selectAll: true);
     expect(copy, contains('Heading'));
@@ -124,7 +128,7 @@ void main() {
     await gesture.moveTo(second.centerRight - const Offset(1, 0));
     await gesture.up();
     await tester.pumpAndSettle();
-    final selectable = tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    final selectable = tester.state<SelectableRegionState>(_regionFinder);
     expect(selectable.contextMenuButtonItems.any(
       (item) => item.type == ContextMenuButtonType.copy), isTrue);
     final copied = await copyCurrentSelection(tester);
@@ -142,7 +146,7 @@ void main() {
       child: ListView.builder(controller: controller, itemExtent: 100,
         itemCount: lines.length, itemBuilder: (_, i) => Text(lines[i])),
     );
-    final region = tester.state<SelectionAreaState>(find.byType(SelectionArea)).selectableRegion;
+    final region = tester.state<SelectableRegionState>(_regionFinder);
     region.selectAll(SelectionChangedCause.toolbar);
     await tester.pumpAndSettle();
     controller.jumpTo(4000);

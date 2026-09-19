@@ -37,6 +37,7 @@ class FolioSheetContent extends StatelessWidget {
             maxHeight: MediaQuery.sizeOf(context).height * 0.85,
           ),
           child: GlassPanel(
+            liquidMotion: true,
             borderRadius: FolioBottomSheet.cornerRadius,
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
