@@ -1,5 +1,4 @@
 import 'package:flutter/widgets.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../../../shared/theme/folio_theme.dart';
