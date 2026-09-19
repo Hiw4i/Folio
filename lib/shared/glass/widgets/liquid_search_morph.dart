@@ -67,9 +67,9 @@ class LiquidSearchMorph extends StatelessWidget {
       press: frame.deformCancel ? frame.press : 0,
     );
 
-    Widget soften(Widget child) => LiquidContent.soften(
+    Widget soften(Widget child) => AdaptiveGlassEffects(
+      blurSigma: FolioSettingsScope.blurEnabledOf(context) ? selfBlur : 0,
       child: child,
-      sigma: FolioSettingsScope.blurEnabledOf(context) ? selfBlur : 0,
     );
 
     return AdaptiveGlassForegroundGroup(
@@ -110,7 +110,7 @@ class LiquidSearchMorph extends StatelessWidget {
                     scale: LiquidShape.contentScale(
                       frame.deformCancel ? 0 : frame.press,
                     ),
-                    child: Opacity(
+                    child: AdaptiveGlassEffects(
                       opacity:
                           (0.88 + motion.submitEnergy * 0.12) *
                           transitionOpacity,
@@ -142,7 +142,7 @@ class LiquidSearchMorph extends StatelessWidget {
                     behavior: HitTestBehavior.translucent,
                     onPointerDown: (_) => onTapInput(),
                     child: soften(
-                      Opacity(
+                      AdaptiveGlassEffects(
                         opacity: contentOpacity * transitionOpacity,
                         child: Transform.translate(
                           offset: mainContentOffset,
@@ -200,37 +200,41 @@ class LiquidSearchMorph extends StatelessWidget {
                                   );
                                 },
                               ),
-                              Semantics(
-                                key: const ValueKey<String>('search_editable'),
-                                label: semanticsLabel,
-                                textField: true,
-                                child: EditableText(
-                                  key: editableKey,
-                                  controller: searchController,
-                                  focusNode: searchFocus,
-                                  contextMenuBuilder:
-                                      folioEditableTextContextMenuBuilder,
-                                  // Glyphs are transparent: the visible text is
-                                  // the adaptive mirror above (same metrics, so
-                                  // caret/selection stay aligned). No shadows —
-                                  // even a transparent glyph would cast them.
-                                  style: const TextStyle(
-                                    fontFamily: 'Inter',
-                                    color: Color(0x00FFFFFF),
-                                    fontSize: 16,
-                                    height: 1.2,
+                              AdaptiveGlassDecoration(
+                                child: Semantics(
+                                  key: const ValueKey<String>(
+                                    'search_editable',
                                   ),
-                                  cursorColor: FolioColors.cursor,
-                                  backgroundCursorColor:
-                                      FolioColors.cursorBackground,
-                                  selectionColor: FolioColors.selection,
-                                  maxLines: 1,
-                                  keyboardType: TextInputType.text,
-                                  textInputAction: TextInputAction.search,
-                                  onSubmitted: (value) {
-                                    motion.submit();
-                                    onSubmitted?.call(value);
-                                  },
+                                  label: semanticsLabel,
+                                  textField: true,
+                                  child: EditableText(
+                                    key: editableKey,
+                                    controller: searchController,
+                                    focusNode: searchFocus,
+                                    contextMenuBuilder:
+                                        folioEditableTextContextMenuBuilder,
+                                    // Glyphs are transparent: the visible text is
+                                    // the adaptive mirror above (same metrics, so
+                                    // caret/selection stay aligned). No shadows —
+                                    // even a transparent glyph would cast them.
+                                    style: const TextStyle(
+                                      fontFamily: 'Inter',
+                                      color: Color(0x00FFFFFF),
+                                      fontSize: 16,
+                                      height: 1.2,
+                                    ),
+                                    cursorColor: FolioColors.cursor,
+                                    backgroundCursorColor:
+                                        FolioColors.cursorBackground,
+                                    selectionColor: FolioColors.selection,
+                                    maxLines: 1,
+                                    keyboardType: TextInputType.text,
+                                    textInputAction: TextInputAction.search,
+                                    onSubmitted: (value) {
+                                      motion.submit();
+                                      onSubmitted?.call(value);
+                                    },
+                                  ),
                                 ),
                               ),
                             ],
@@ -252,7 +256,7 @@ class LiquidSearchMorph extends StatelessWidget {
                 ),
                 child: IgnorePointer(
                   child: soften(
-                    Opacity(
+                    AdaptiveGlassEffects(
                       opacity: cancelOpacity * transitionOpacity,
                       child: Transform.translate(
                         offset: cancelContentOffset,

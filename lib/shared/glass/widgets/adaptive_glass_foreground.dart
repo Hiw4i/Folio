@@ -1,11 +1,15 @@
 import 'dart:collection';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../settings/folio_settings_scope.dart';
+import 'adaptive_glass_effects.dart';
+import 'liquid_content.dart';
+
+export 'adaptive_glass_effects.dart';
 
 /// Fraction down from the top of a glass rect used as the shared backdrop
 /// sample. One point per control keeps black/white stable; per-pixel sampling
@@ -19,11 +23,23 @@ Offset adaptiveGlassSamplePoint(Rect rect) => Offset(
 );
 
 /// Outline keeping white fallbacks readable on light backdrops. Shared by
-/// [_OutlinedIcon] and [_OutlinedText] so the safe path never drifts.
+/// [_OutlinedIcon] when shader filters are not supported.
 const kAdaptiveOutlineShadows = <Shadow>[
   Shadow(color: Color(0xFF000000), blurRadius: 3),
   Shadow(color: Color(0xFF000000), blurRadius: 1),
 ];
+
+bool get _shaderSupported =>
+    AdaptiveGlassDebug.shaderFilterSupportedOverride ??
+    ui.ImageFilter.isShaderFilterSupported;
+
+/// Start loading once, before a reader/morph animation needs its first glyph.
+/// Failures are handled by the same visible fallback as unsupported renderers.
+Future<void> precacheAdaptiveGlassForeground() async {
+  if (_shaderSupported) {
+    await _AdaptiveGlassProgram.load();
+  }
+}
 
 /// Defines one shared backdrop sample point for every adaptive glyph in a
 /// liquid-glass control. The default is the center of this render box.
@@ -43,13 +59,7 @@ class AdaptiveGlassForegroundGroup extends SingleChildRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) {
     final group = renderObject as _RenderAdaptiveGlassGroup;
-    group
-      ..samplePoint = samplePoint
-      // A Stack can move a glyph by changing parent data without repainting
-      // the glyph render object itself. Its filter uses screen-space bounds,
-      // so invalidate those retained bounds whenever the owning control is
-      // rebuilt by its motion controller.
-      ..invalidateAdaptiveDescendantGeometry();
+    group.samplePoint = samplePoint;
   }
 }
 
@@ -69,16 +79,9 @@ class _RenderAdaptiveGlassGroup extends RenderProxyBox {
   Offset get globalSamplePoint =>
       localToGlobal(_samplePoint ?? (Offset.zero & size).center);
 
-  void invalidateAdaptiveDescendantGeometry() {
-    void invalidate(RenderObject child) {
-      if (child is _RenderAdaptiveBackdrop) {
-        child.invalidateAncestorGeometry();
-      }
-      child.visitChildren(invalidate);
-    }
-
-    visitChildren(invalidate);
-  }
+  // Deliberately not a repaint boundary: changes to a parent Transform or
+  // Stack position repaint the glyphs. They refresh coordinates in paint,
+  // without an O(subtree) invalidation walk on every motion tick.
 }
 
 /// An icon whose black/white foreground is computed by the GPU from the
@@ -87,8 +90,8 @@ class _RenderAdaptiveGlassGroup extends RenderProxyBox {
 /// The widget never reads pixels back to the CPU and never schedules tone
 /// updates. Each painted frame therefore reflects the current backdrop.
 ///
-/// `style` color/shadows are ignored: the shader outputs pure black or white
-/// (fallback: white with [kAdaptiveOutlineShadows]).
+/// The shader uses a common black/white tone for the control (with a narrow
+/// luminance crossover); unsupported renderers use the outlined white icon.
 class AdaptiveGlassIcon extends StatelessWidget {
   const AdaptiveGlassIcon(
     this.icon, {
@@ -104,21 +107,25 @@ class AdaptiveGlassIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!FolioSettingsScope.blurEnabledOf(context)) {
-      return Icon(
-        icon,
-        size: size,
-        semanticLabel: semanticLabel,
-        color: const Color(0xFFFFFFFF),
+      return AdaptiveGlassDecoration(
+        child: Icon(
+          icon,
+          size: size,
+          semanticLabel: semanticLabel,
+          color: const Color(0xFFFFFFFF),
+        ),
       );
     }
     final shaderSupported =
         AdaptiveGlassDebug.shaderFilterSupportedOverride ??
         ui.ImageFilter.isShaderFilterSupported;
     if (!shaderSupported) {
-      return _OutlinedIcon(
-        icon: icon,
-        size: size,
-        semanticLabel: semanticLabel,
+      return AdaptiveGlassDecoration(
+        child: _OutlinedIcon(
+          icon: icon,
+          size: size,
+          semanticLabel: semanticLabel,
+        ),
       );
     }
     final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
@@ -126,6 +133,7 @@ class AdaptiveGlassIcon extends StatelessWidget {
       String.fromCharCode(icon.codePoint),
       textDirection: direction,
       semanticsLabel: semanticLabel ?? '',
+      textScaler: TextScaler.noScaling,
       style: TextStyle(
         inherit: false,
         color: const Color(0xFFFFFFFF),
@@ -152,8 +160,8 @@ class AdaptiveGlassIcon extends StatelessWidget {
 /// shared sample point of its nearest [AdaptiveGlassForegroundGroup].
 ///
 /// [style.color] and [style.shadows] are ignored: the glyph mask is always
-/// built white and the shader (or the outlined fallback) decides the visible
-/// tone, so callers must not rely on a custom color.
+/// built white and the shader decides the visible tone. Unsupported renderers
+/// use white text, so callers must not rely on a custom color.
 class AdaptiveGlassText extends StatelessWidget {
   const AdaptiveGlassText(
     this.data, {
@@ -180,30 +188,30 @@ class AdaptiveGlassText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!FolioSettingsScope.blurEnabledOf(context)) {
-      return Text(
-        data,
-        style: style.copyWith(
-          color: const Color(0xFFFFFFFF),
-          shadows: const <Shadow>[],
-        ),
-        maxLines: maxLines,
-        overflow: overflow,
-        softWrap: softWrap,
-        textAlign: textAlign,
-        textDirection: textDirection,
-        textScaler: textScaler,
-        semanticsLabel: semanticsLabel,
-      );
-    }
     final effectiveStyle = DefaultTextStyle.of(context).style.merge(style);
     final direction = textDirection ?? Directionality.of(context);
     final scaler = textScaler ?? MediaQuery.textScalerOf(context);
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final fallback = _OutlinedText(
+      data: data,
+      style: effectiveStyle,
+      maxLines: maxLines,
+      overflow: overflow,
+      softWrap: softWrap,
+      textAlign: textAlign,
+      textDirection: direction,
+      textScaler: scaler,
+      semanticsLabel: semanticsLabel,
+    );
+    if (!FolioSettingsScope.blurEnabledOf(context) || !_shaderSupported) {
+      return AdaptiveGlassDecoration(child: fallback);
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final layoutWidth = softWrap && constraints.maxWidth.isFinite
+        final layoutWidth =
+            (softWrap || overflow == TextOverflow.ellipsis) &&
+                constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : double.infinity;
         final painter = _textPainter(
@@ -214,12 +222,17 @@ class AdaptiveGlassText extends StatelessWidget {
           maxLines: maxLines,
           overflow: overflow,
           textAlign: textAlign,
-        )..layout(maxWidth: layoutWidth);
-        final size = constraints.constrain(painter.size);
-        painter.dispose();
+        );
+        late final Size size;
+        try {
+          painter.layout(maxWidth: layoutWidth);
+          size = constraints.constrain(painter.size);
+        } finally {
+          painter.dispose();
+        }
         final key = _TextMaskKey(
           data,
-          effectiveStyle,
+          _maskStyle(effectiveStyle),
           direction,
           scaler,
           maxLines,
@@ -227,17 +240,7 @@ class AdaptiveGlassText extends StatelessWidget {
           textAlign,
           size,
           pixelRatio,
-        );
-        final fallback = _OutlinedText(
-          data: data,
-          style: effectiveStyle,
-          maxLines: maxLines,
-          overflow: overflow,
           softWrap: softWrap,
-          textAlign: textAlign,
-          textDirection: direction,
-          textScaler: scaler,
-          semanticsLabel: semanticsLabel,
         );
         return Semantics(
           label: semanticsLabel ?? data,
@@ -256,6 +259,12 @@ class AdaptiveGlassText extends StatelessWidget {
   }
 }
 
+TextStyle _maskStyle(TextStyle style) => style.copyWith(
+  color: const Color(0xFFFFFFFF),
+  backgroundColor: const Color(0x00000000),
+  shadows: const <Shadow>[],
+);
+
 TextPainter _textPainter({
   required String data,
   required TextStyle style,
@@ -266,14 +275,7 @@ TextPainter _textPainter({
   required TextAlign? textAlign,
 }) {
   return TextPainter(
-    text: TextSpan(
-      text: data,
-      style: style.copyWith(
-        color: const Color(0xFFFFFFFF),
-        backgroundColor: const Color(0x00000000),
-        shadows: const <Shadow>[],
-      ),
-    ),
+    text: TextSpan(text: data, style: _maskStyle(style)),
     textDirection: direction,
     textScaler: scaler,
     maxLines: maxLines,
@@ -330,7 +332,16 @@ class _AdaptiveMaskSurfaceState extends State<_AdaptiveMaskSurface> {
   }
 
   void _acquireMask() {
-    _mask = _GlassMaskCache.acquire(widget.maskKey, widget.createMask);
+    final size = widget.maskKey.logicalSize;
+    if (size.isEmpty || !size.isFinite) {
+      return;
+    }
+    try {
+      _mask = _GlassMaskCache.acquire(widget.maskKey, widget.createMask);
+    } on Object catch (error) {
+      // A mask allocation failure must leave readable, tappable content.
+      debugPrint('Adaptive glass mask unavailable: $error');
+    }
   }
 
   void _releaseMask(_MaskKey key) {
@@ -339,7 +350,7 @@ class _AdaptiveMaskSurfaceState extends State<_AdaptiveMaskSurface> {
   }
 
   Future<void> _loadProgram() async {
-    if (!_shaderSupported) {
+    if (!_shaderSupported || _AdaptiveGlassProgram.program != null) {
       return;
     }
     final request = ++_programRequest;
@@ -362,42 +373,41 @@ class _AdaptiveMaskSurfaceState extends State<_AdaptiveMaskSurface> {
   @override
   Widget build(BuildContext context) {
     final program = _AdaptiveGlassProgram.program;
+    final effects = AdaptiveGlassEffects.of(context);
+    final fallback = AdaptiveGlassDecoration(child: widget.fallback);
     if (program == null || _mask == null) {
-      return widget.fallback;
+      return fallback;
     }
-    // Keep a normal Flutter glyph below the runtime-effect layer. Some older
-    // Android GPU drivers report shader-filter support but temporarily drop a
-    // BackdropFilter when it is nested in an opacity/image-filter/transform
-    // animation. The underlay makes that failure mode visible and harmless;
-    // the adaptive result remains on top whenever the driver renders it.
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        widget.fallback,
-        _AdaptiveBackdrop(
-          program: program,
-          mask: _mask!,
-          devicePixelRatio: widget.maskKey.pixelRatio,
-        ),
-      ],
+    // Exclusive fallback, NOT a white glyph underneath an adaptive one.
+    // Double-painting the antialiased edge caused pale fringes; an opacity
+    // layer above the old backdrop also exposed that white underlay in motion.
+    return _AdaptiveBackdrop(
+      program: program,
+      mask: _mask!,
+      devicePixelRatio: widget.maskKey.pixelRatio,
+      effects: effects,
+      child: fallback,
     );
   }
 }
 
-class _AdaptiveBackdrop extends LeafRenderObjectWidget {
+class _AdaptiveBackdrop extends SingleChildRenderObjectWidget {
   const _AdaptiveBackdrop({
     required this.program,
     required this.mask,
     required this.devicePixelRatio,
+    required this.effects,
+    required super.child,
   });
 
   final ui.FragmentProgram program;
   final ui.Image mask;
   final double devicePixelRatio;
+  final AdaptiveGlassEffectData effects;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderAdaptiveBackdrop(program, mask, devicePixelRatio);
+      _RenderAdaptiveBackdrop(program, mask, devicePixelRatio, effects);
 
   @override
   void updateRenderObject(
@@ -407,129 +417,172 @@ class _AdaptiveBackdrop extends LeafRenderObjectWidget {
     renderObject
       ..program = program
       ..mask = mask
-      ..devicePixelRatio = devicePixelRatio;
+      ..devicePixelRatio = devicePixelRatio
+      ..effects = effects;
   }
 }
 
-class _RenderAdaptiveBackdrop extends RenderBox {
-  _RenderAdaptiveBackdrop(this._program, this._mask, this._devicePixelRatio);
+class _RenderAdaptiveBackdrop extends RenderProxyBox {
+  _RenderAdaptiveBackdrop(
+    this._program,
+    this._mask,
+    this._devicePixelRatio,
+    this._effects,
+  );
 
   ui.FragmentProgram _program;
   ui.Image _mask;
   double _devicePixelRatio;
-  Rect? _physicalBounds;
-  Offset? _physicalSamplePoint;
+  AdaptiveGlassEffectData _effects;
+  List<double>? _lastUniforms;
   ui.FragmentShader? _shader;
+  ui.Image? _boundMask;
   ui.ImageFilter? _filter;
+  Rect _filterBounds = Rect.zero;
   bool _filterCreationFailed = false;
+  final LayerHandle<BackdropFilterLayer> _backdropLayer =
+      LayerHandle<BackdropFilterLayer>();
+  final LayerHandle<ClipRectLayer> _clipLayer = LayerHandle<ClipRectLayer>();
 
   static final Paint _coveragePaint = Paint()
     ..color = const Color.fromARGB(1, 0, 0, 0);
 
   set program(ui.FragmentProgram value) {
-    if (identical(value, _program)) {
-      return;
-    }
+    if (identical(value, _program)) return;
     _program = value;
+    _shader?.dispose();
+    _shader = null;
+    _boundMask = null;
+    _filterCreationFailed = false;
     _invalidateFilter();
   }
 
   set mask(ui.Image value) {
-    if (identical(value, _mask)) {
-      return;
-    }
+    if (identical(value, _mask)) return;
     _mask = value;
+    _filterCreationFailed = false;
     _invalidateFilter();
   }
 
   set devicePixelRatio(double value) {
-    if (value == _devicePixelRatio) {
-      return;
-    }
+    if (value == _devicePixelRatio) return;
     _devicePixelRatio = value;
     _invalidateFilter();
+  }
+
+  set effects(AdaptiveGlassEffectData value) {
+    if (value == _effects) return;
+    _effects = value;
+    markNeedsPaint();
   }
 
   @override
   bool get alwaysNeedsCompositing => true;
 
-  @override
-  void performLayout() {
-    size = constraints.biggest;
-  }
-
   void _invalidateFilter() {
-    _physicalBounds = null;
-    _physicalSamplePoint = null;
+    _lastUniforms = null;
     _filter = null;
-    _filterCreationFailed = false;
-    _shader?.dispose();
-    _shader = null;
+    // A failed backend is not retried on every opacity/motion tick. A new
+    // program or mask permits a retry; otherwise use the readable fallback.
     markNeedsPaint();
   }
 
-  void invalidateAncestorGeometry() {
-    // Re-evaluate actual screen-space geometry in paint. Do not discard the
-    // shader merely because an ancestor rebuilt with identical bounds.
-    markNeedsPaint();
-  }
-
-  void _ensureFilter() {
-    final globalBounds = MatrixUtils.transformRect(
-      getTransformTo(null),
-      Offset.zero & size,
-    );
-    final physicalBounds = Rect.fromLTWH(
-      globalBounds.left * _devicePixelRatio,
-      globalBounds.top * _devicePixelRatio,
-      globalBounds.width * _devicePixelRatio,
-      globalBounds.height * _devicePixelRatio,
-    );
-    final group = _findGroup();
-    final samplePoint =
-        (group?.globalSamplePoint ??
-            physicalBounds.center / _devicePixelRatio) *
-        _devicePixelRatio;
-    if ((_filter != null || _filterCreationFailed) &&
-        physicalBounds == _physicalBounds &&
-        samplePoint == _physicalSamplePoint) {
-      return;
+  bool _ensureFilter() {
+    if (size.isEmpty || !_devicePixelRatio.isFinite || _devicePixelRatio <= 0) {
+      return false;
     }
+    final transform = getTransformTo(null);
+    Offset physical(Offset point) =>
+        MatrixUtils.transformPoint(transform, point) * _devicePixelRatio;
+    final origin = physical(Offset.zero);
+    final xAxis = physical(Offset(size.width, 0)) - origin;
+    final yAxis = physical(Offset(0, size.height)) - origin;
+    final determinant = xAxis.dx * yAxis.dy - yAxis.dx * xAxis.dy;
+    if (!determinant.isFinite || determinant.abs() < 1e-8) return false;
 
-    final oldShader = _shader;
-    ui.FragmentShader? shader;
+    final group = _findGroup();
+    final sample =
+        (group?.globalSamplePoint ??
+            localToGlobal((Offset.zero & size).center)) *
+        _devicePixelRatio;
+    final localSample = globalToLocal(sample / _devicePixelRatio);
+    if (!origin.isFinite || !sample.isFinite || !localSample.isFinite) {
+      return false;
+    }
+    // Include the shared sample patch in filter input coverage. Clipping to
+    // just a 24x24 glyph can crop away the sample above that glyph entirely.
+    // Outside the mask the shader returns transparent: this extra coverage
+    // does not tint, blur or otherwise recolor the glass surface.
+    // Three *physical* pixels of source coverage, even under a scale/flip.
+    final sampleHalfWidth =
+        3 * size.width * (yAxis.dy.abs() + yAxis.dx.abs()) / determinant.abs();
+    final sampleHalfHeight =
+        3 * size.height * (xAxis.dy.abs() + xAxis.dx.abs()) / determinant.abs();
+    _filterBounds = (Offset.zero & size)
+        .inflate(_effects.blurSigma * 3 + 1)
+        .expandToInclude(
+          Rect.fromCenter(
+            center: localSample,
+            width: sampleHalfWidth * 2,
+            height: sampleHalfHeight * 2,
+          ),
+        );
+    final blurSigma = (_effects.blurSigma * 10).roundToDouble() / 10;
+    final uniforms = <double>[
+      origin.dx, origin.dy,
+      yAxis.dy / determinant, -yAxis.dx / determinant,
+      -xAxis.dy / determinant, xAxis.dx / determinant,
+      sample.dx, sample.dy,
+      _effects.opacity,
+      // Used for equality below; the actual blur is a native Gaussian applied
+      // after the shader, not an approximation over the sampled backdrop.
+      blurSigma,
+    ];
+    if (listEquals(uniforms, _lastUniforms)) {
+      return _filter != null;
+    }
+    if (_filterCreationFailed) return false;
     try {
-      shader = _program.fragmentShader()
-        ..setFloat(2, physicalBounds.left)
-        ..setFloat(3, physicalBounds.top)
-        ..setFloat(4, physicalBounds.width)
-        ..setFloat(5, physicalBounds.height)
-        ..setFloat(6, samplePoint.dx)
-        ..setFloat(7, samplePoint.dy)
-        ..setImageSampler(1, _mask, filterQuality: FilterQuality.low);
-      _shader = shader;
-      _filter = ui.ImageFilter.shader(shader);
-      _physicalBounds = physicalBounds;
-      _physicalSamplePoint = samplePoint;
-      _filterCreationFailed = false;
-      oldShader?.dispose();
+      // Reuse the native shader and layers. ImageFilter takes a uniform
+      // snapshot, so create that lightweight filter only when values change.
+      final shader = _shader ??= _createShader();
+      for (var index = 0; index < uniforms.length - 1; index++) {
+        shader.setFloat(index + 2, uniforms[index]);
+      }
+      if (!identical(_boundMask, _mask)) {
+        shader.setImageSampler(1, _mask, filterQuality: FilterQuality.low);
+        _boundMask = _mask;
+      }
+      ui.ImageFilter filter = ui.ImageFilter.shader(shader);
+      if (blurSigma > 0) {
+        filter = ui.ImageFilter.compose(
+          outer: LiquidContent.softeningFilterFor(blurSigma),
+          inner: filter,
+        );
+      }
+      _filter = filter;
+      _lastUniforms = uniforms;
+      return true;
     } on Object catch (error) {
-      shader?.dispose();
-      _shader = oldShader;
       _filter = null;
       _filterCreationFailed = true;
-      _physicalBounds = physicalBounds;
-      _physicalSamplePoint = samplePoint;
-      debugPrint('Adaptive glass filter disabled for this glyph: $error');
+      debugPrint('Adaptive glass filter unavailable: $error');
+      return false;
     }
+  }
+
+  ui.FragmentShader _createShader() {
+    assert(() {
+      AdaptiveGlassDebug.shaderCreations++;
+      return true;
+    }());
+    return _program.fragmentShader();
   }
 
   _RenderAdaptiveGlassGroup? _findGroup() {
     RenderObject? ancestor = parent;
     while (ancestor != null) {
-      if (ancestor is _RenderAdaptiveGlassGroup) {
-        return ancestor;
-      }
+      if (ancestor is _RenderAdaptiveGlassGroup) return ancestor;
       ancestor = ancestor.parent;
     }
     return null;
@@ -537,33 +590,50 @@ class _RenderAdaptiveBackdrop extends RenderBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    _ensureFilter();
-    final filter = _filter;
-    if (filter == null) {
+    if (_effects.opacity <= 0) {
+      // Hidden glyphs keep their mask/state but submit no backdrop pass.
+      _backdropLayer.layer = null;
+      _clipLayer.layer = null;
       return;
     }
-    context.pushClipRect(needsCompositing, offset, Offset.zero & size, (
-      context,
+    if (!_ensureFilter()) {
+      _backdropLayer.layer = null;
+      _clipLayer.layer = null;
+      super.paint(context, offset);
+      return;
+    }
+    _clipLayer.layer = context.pushClipRect(
+      needsCompositing,
       offset,
-    ) {
-      context.pushLayer(
-        BackdropFilterLayer(filter: filter, blendMode: BlendMode.srcOver),
-        (context, offset) {
-          context.canvas.drawPoints(ui.PointMode.points, <Offset>[
-            offset,
-            offset + Offset(size.width - 1, 0),
-            offset + Offset(0, size.height - 1),
-            offset + Offset(size.width - 1, size.height - 1),
-          ], _coveragePaint);
-        },
-        offset,
-        childPaintBounds: offset & size,
-      );
-    });
+      _filterBounds,
+      (context, offset) {
+        final backdrop = _backdropLayer.layer ??= BackdropFilterLayer();
+        backdrop
+          ..filter = _filter
+          ..blendMode = BlendMode.srcOver;
+        context.pushLayer(
+          backdrop,
+          (context, offset) {
+            final bounds = _filterBounds.shift(offset);
+            context.canvas.drawPoints(ui.PointMode.points, <Offset>[
+              bounds.topLeft,
+              bounds.topRight,
+              bounds.bottomLeft,
+              bounds.bottomRight,
+            ], _coveragePaint);
+          },
+          offset,
+          childPaintBounds: _filterBounds.shift(offset),
+        );
+      },
+      oldLayer: _clipLayer.layer,
+    );
   }
 
   @override
   void dispose() {
+    _backdropLayer.layer = null;
+    _clipLayer.layer = null;
     _shader?.dispose();
     super.dispose();
   }
@@ -592,6 +662,18 @@ class _AdaptiveGlassProgram {
 abstract final class AdaptiveGlassDebug {
   @visibleForTesting
   static bool? shaderFilterSupportedOverride;
+
+  @visibleForTesting
+  static int shaderCreations = 0;
+
+  @visibleForTesting
+  static int maskCreations = 0;
+
+  @visibleForTesting
+  static int get cachedMaskBytes => _GlassMaskCache._bytes;
+
+  @visibleForTesting
+  static int get cachedMaskCount => _GlassMaskCache._entries.length;
 
   @visibleForTesting
   static Future<bool> textMaskHasCoverage() async {
@@ -679,8 +761,9 @@ class _TextMaskKey extends _MaskKey {
     this.overflow,
     this.textAlign,
     Size logicalSize,
-    double pixelRatio,
-  ) : super(logicalSize, pixelRatio);
+    double pixelRatio, {
+    this.softWrap = true,
+  }) : super(logicalSize, pixelRatio);
 
   final String data;
   final TextStyle style;
@@ -689,6 +772,7 @@ class _TextMaskKey extends _MaskKey {
   final int? maxLines;
   final TextOverflow? overflow;
   final TextAlign? textAlign;
+  final bool softWrap;
 
   @override
   bool operator ==(Object other) =>
@@ -701,7 +785,8 @@ class _TextMaskKey extends _MaskKey {
       other.overflow == overflow &&
       other.textAlign == textAlign &&
       other.logicalSize == logicalSize &&
-      other.pixelRatio == pixelRatio;
+      other.pixelRatio == pixelRatio &&
+      other.softWrap == softWrap;
 
   @override
   int get hashCode => Object.hash(
@@ -714,6 +799,7 @@ class _TextMaskKey extends _MaskKey {
     textAlign,
     logicalSize,
     pixelRatio,
+    softWrap,
   );
 }
 
@@ -726,6 +812,8 @@ class _MaskEntry {
 
 abstract final class _GlassMaskCache {
   static const _maximumEntries = 64;
+  static const _maximumCachedBytes = 8 * 1024 * 1024;
+  static int _bytes = 0;
   static final LinkedHashMap<_MaskKey, _MaskEntry> _entries =
       LinkedHashMap<_MaskKey, _MaskEntry>();
 
@@ -737,7 +825,12 @@ abstract final class _GlassMaskCache {
       return existing.image;
     }
     final entry = _MaskEntry(create());
+    assert(() {
+      AdaptiveGlassDebug.maskCreations++;
+      return true;
+    }());
     _entries[key] = entry;
+    _bytes += entry.image.width * entry.image.height * 4;
     _trim();
     return entry.image;
   }
@@ -752,16 +845,17 @@ abstract final class _GlassMaskCache {
   }
 
   static void _trim() {
-    if (_entries.length <= _maximumEntries) {
+    if (_entries.length <= _maximumEntries && _bytes <= _maximumCachedBytes) {
       return;
     }
     for (final key in _entries.keys.toList(growable: false)) {
-      if (_entries.length <= _maximumEntries) {
+      if (_entries.length <= _maximumEntries && _bytes <= _maximumCachedBytes) {
         break;
       }
       final entry = _entries[key]!;
       if (entry.references == 0) {
         _entries.remove(key);
+        _bytes -= entry.image.width * entry.image.height * 4;
         entry.image.dispose();
       }
     }
@@ -769,8 +863,18 @@ abstract final class _GlassMaskCache {
 }
 
 ui.Image _createTextMask(_TextMaskKey key) {
+  final width = (key.logicalSize.width * key.pixelRatio).ceil();
+  final height = (key.logicalSize.height * key.pixelRatio).ceil();
+  if (width < 1 ||
+      height < 1 ||
+      width > 8192 ||
+      height > 8192 ||
+      width * height > 4 * 1024 * 1024) {
+    throw StateError('Adaptive glyph exceeds the mask allocation budget');
+  }
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)..scale(key.pixelRatio);
+  canvas.clipRect(Offset.zero & key.logicalSize);
   final painter = _textPainter(
     data: key.data,
     style: key.style,
@@ -779,16 +883,22 @@ ui.Image _createTextMask(_TextMaskKey key) {
     maxLines: key.maxLines,
     overflow: key.overflow,
     textAlign: key.textAlign,
-  )..layout(maxWidth: key.logicalSize.width);
-  painter.paint(canvas, Offset.zero);
-  painter.dispose();
-  final picture = recorder.endRecording();
-  final image = picture.toImageSync(
-    (key.logicalSize.width * key.pixelRatio).ceil().clamp(1, 1 << 20),
-    (key.logicalSize.height * key.pixelRatio).ceil().clamp(1, 1 << 20),
   );
-  picture.dispose();
-  return image;
+  ui.Picture? picture;
+  try {
+    painter.layout(
+      maxWidth: key.softWrap || key.overflow == TextOverflow.ellipsis
+          ? key.logicalSize.width
+          : double.infinity,
+    );
+    painter.paint(canvas, Offset.zero);
+    picture = recorder.endRecording();
+    return picture.toImageSync(width, height);
+  } finally {
+    painter.dispose();
+    picture?.dispose();
+    if (recorder.isRecording) recorder.endRecording().dispose();
+  }
 }
 
 class _OutlinedIcon extends StatelessWidget {

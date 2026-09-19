@@ -1,7 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-
-import 'dart:async';
 
 import 'package:flutter/material.dart'
     show
@@ -10,16 +10,17 @@ import 'package:flutter/material.dart'
         TextSelectionTheme,
         TextSelectionThemeData;
 
-import '../features/library/data/file_library_repository.dart';
-import '../features/library/data/library_repository.dart';
-import '../features/library/logic/library_controller.dart';
-import '../features/library/widgets/library_screen.dart';
-import '../features/reader/data/document_content_source.dart';
-import '../shared/android/android_storage_gateway.dart';
-import '../shared/settings/folio_settings_controller.dart';
-import '../shared/settings/folio_settings_scope.dart';
-import '../shared/settings/folio_settings_store.dart';
-import '../shared/theme/folio_theme.dart';
+import 'features/library/data/file_library_repository.dart';
+import 'features/library/data/library_repository.dart';
+import 'features/library/logic/library_controller.dart';
+import 'features/library/widgets/library_screen.dart';
+import 'features/reader/data/document_content_source.dart';
+import 'shared/android/android_storage_gateway.dart';
+import 'shared/glass/widgets/adaptive_glass_foreground.dart';
+import 'shared/settings/folio_settings_controller.dart';
+import 'shared/settings/folio_settings_scope.dart';
+import 'shared/settings/folio_settings_store.dart';
+import 'shared/theme/folio_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +60,7 @@ class _FolioAppState extends State<FolioApp> {
   @override
   void initState() {
     super.initState();
+    unawaited(precacheAdaptiveGlassForeground());
     _settingsController = FolioSettingsController(
       store: widget.settingsStore ?? FileFolioSettingsStore(),
     );

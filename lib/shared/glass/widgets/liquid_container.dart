@@ -23,6 +23,10 @@ import 'liquid_morphing_control.dart';
 /// - hit testing always absorbs behind the material via [GlassTouchShield]
 ///   in single-action mode.
 ///
+/// Foreground: use AdaptiveGlassText/Icon for adaptive glyphs. Wrap ordinary
+/// custom artwork in AdaptiveGlassDecoration to receive fades/motion blur
+/// without inserting an offscreen buffer above the adaptive glyphs.
+///
 /// Modes:
 /// - [LiquidGlass.fixed]: one material rect with arbitrary [child] inside —
 ///   a single button (`onTap != null`), a cluster of inner buttons
@@ -373,7 +377,7 @@ class _LiquidFixedSurfaceState extends State<_LiquidFixedSurface>
                             // stops the traversal so nothing behind ever sees
                             // taps or drags started on the material.
                             if (!interactive) const GlassHitBlocker(),
-                            Opacity(
+                            AdaptiveGlassEffects(
                               opacity: transitionOpacity,
                               child: Center(
                                 child: Transform.translate(

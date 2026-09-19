@@ -199,9 +199,11 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
               reducedMotion: _reducedMotion,
             );
 
-            Widget soften(Widget value) => LiquidContent.soften(
+            Widget soften(Widget value) => AdaptiveGlassEffects(
+              blurSigma: FolioSettingsScope.blurEnabledOf(context)
+                  ? selfBlur
+                  : 0,
               child: value,
-              sigma: FolioSettingsScope.blurEnabledOf(context) ? selfBlur : 0,
             );
 
             return AdaptiveGlassForegroundGroup(
@@ -283,7 +285,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                               child: IgnorePointer(
                                 child: ExcludeSemantics(
                                   child: soften(
-                                    Opacity(
+                                    AdaptiveGlassEffects(
                                       opacity:
                                           collapsedOpacity * transitionOpacity,
                                       child: Transform.translate(
@@ -311,7 +313,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                                   child: ExcludeSemantics(
                                     excluding: morph < 0.82,
                                     child: soften(
-                                      Opacity(
+                                      AdaptiveGlassEffects(
                                         opacity:
                                             expandedOpacity * transitionOpacity,
                                         child: Transform.translate(

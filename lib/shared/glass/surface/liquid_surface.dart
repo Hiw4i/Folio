@@ -58,13 +58,13 @@ abstract final class LiquidBlur {
 /// Opacity is consumed below each [BackdropFilter], never around it.
 class LiquidBlurScope extends InheritedWidget {
   const LiquidBlurScope({
-    required this.sigma,
+    this.sigma,
     required this.opacity,
     required super.child,
     super.key,
   });
 
-  final double sigma;
+  final double? sigma;
   final double opacity;
 
   static double? maybeOf(BuildContext context) =>
@@ -75,8 +75,30 @@ class LiquidBlurScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(LiquidBlurScope oldWidget) =>
-      (sigma * 2).round() != (oldWidget.sigma * 2).round() ||
-      (opacity * 100).round() != (oldWidget.opacity * 100).round();
+      sigma != oldWidget.sigma || opacity != oldWidget.opacity;
+}
+
+/// Fades glass paint and foreground separately, below backdrop filters.
+/// An outer Opacity would isolate the backdrop and make its luminance black.
+/// Nested fades multiply without resetting the child's physics/editable state.
+class LiquidFade extends StatelessWidget {
+  const LiquidFade({required this.opacity, required this.child, super.key});
+
+  final double opacity;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final combined = ((LiquidBlurScope.maybeOpacityOf(context) ?? 1) * opacity)
+        .clamp(0.0, 1.0);
+    return LiquidBlurScope(
+      sigma: LiquidBlurScope.maybeOf(context),
+      opacity: combined,
+      // Keep state, but do not leave a fully blurred invisible button behind
+      // when the search navigator reaches its hidden endpoint.
+      child: Offstage(offstage: combined <= 0, child: child),
+    );
+  }
 }
 
 /// Static (non-deforming) liquid shell: the `GlassPanel` look as a mode of

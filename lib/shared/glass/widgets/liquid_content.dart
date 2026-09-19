@@ -51,7 +51,6 @@ abstract final class LiquidContent {
   /// quantization keeps native [ui.ImageFilter] allocation out of animation
   /// frames. This stays separate from [LiquidBlur] because content blur uses
   /// [ui.TileMode.decal], not backdrop's mirror mode.
-  @visibleForTesting
   static ui.ImageFilter softeningFilterFor(double sigma) {
     final quantized = (sigma * 10).roundToDouble() / 10;
     var filter = _softeningFilters[quantized];

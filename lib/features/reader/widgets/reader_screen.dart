@@ -625,12 +625,14 @@ class _ReaderScreenState extends State<ReaderScreen>
                         builder: (context, child) {
                           final hasQuery = _renderer.query.trim().isNotEmpty;
                           final gated = hasQuery && !_menuOpen && !_infoOpen;
-                          return AnimatedOpacity(
-                            opacity: gated ? 1 : 0,
+                          return TweenAnimationBuilder<double>(
+                            tween: Tween<double>(end: gated ? 1 : 0),
                             duration: navigatorFadeDuration,
                             curve: gated
                                 ? ReaderChromeSpec.showCurve
                                 : ReaderChromeSpec.hideCurve,
+                            builder: (context, opacity, child) =>
+                                LiquidFade(opacity: opacity, child: child!),
                             child: IgnorePointer(
                               ignoring: !gated,
                               child: ExcludeSemantics(
@@ -1147,6 +1149,7 @@ class _SearchNavigator extends StatelessWidget {
         _buttonWidth * 2 +
         _rightPadding +
         4;
+    textPainter.dispose();
     return LiquidGlass.fixed(
       key: const ValueKey<String>('reader_search_navigator_glass'),
       size: Size(width, _height),
@@ -1219,7 +1222,7 @@ class _SearchStepButton extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: enabled ? onTap : null,
           child: Center(
-            child: Opacity(
+            child: AdaptiveGlassEffects(
               opacity: enabled ? 1 : 0.38,
               child: AdaptiveGlassIcon(icon, size: 16),
             ),
@@ -1257,7 +1260,9 @@ class _ReaderMenuContent extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: SizedBox(
               height: 0.8,
-              child: ColoredBox(color: FolioColors.separator),
+              child: AdaptiveGlassDecoration(
+                child: ColoredBox(color: FolioColors.separator),
+              ),
             ),
           ),
           _MenuAction(label: 'Remove from Recents', onTap: onRemove),

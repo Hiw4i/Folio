@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../../../shared/glass/surface/liquid_surface.dart';
+
 /// Shared show/hide spec for every reader control.
 ///
 /// One [AnimationController] (owned by `ReaderScreen`) drives all five
@@ -25,20 +27,11 @@ abstract final class ReaderChromeSpec {
   static const double pillHiddenDy = 56;
 }
 
-/// iOS-style slide wrapper driven by a shared chrome animation.
-///
-/// - `progress`: 0 = hidden, 1 = shown (already curved with asymmetric
-///   forward/reverse curves).
-/// - `hiddenDy`: pixel travel when hidden (negative = up, positive = down).
-/// - When fully shown the child is returned without [Opacity]/[Transform]
-///   so idle frames and goldens stay pixel-identical and layer-free.
-/// - When dismissed the subtree is replaced with a shrink box, unmounting
-///   every `BackdropFilter` inside (max scroll FPS).
-/// - While moving, the whole chrome is composited as one lightweight layer.
-///   In particular, do not propagate the animation value into every glass
-///   surface: changing a backdrop blur for each frame forces several costly
-///   backdrop passes over the scrolling document. Hit testing and semantics
-///   follow `t < 0.5`.
+/// Slide/fade driven by the common chrome animation. Geometry, timing, hit
+/// testing and unmounting at the hidden endpoint are unchanged. The fade is
+/// consumed by glass paint/foreground below backdrop filters: an Opacity above
+/// them would replace the real document with a transparent offscreen input.
+/// Keep the same subtree at every visible progress value, including exactly 1.
 class ReaderChromeShell extends StatelessWidget {
   const ReaderChromeShell({
     required this.progress,
@@ -60,14 +53,6 @@ class ReaderChromeShell extends StatelessWidget {
         if (t <= 0.001) {
           return const SizedBox.shrink();
         }
-        if (t >= 0.999) {
-          return RepaintBoundary(
-            child: IgnorePointer(
-              ignoring: false,
-              child: ExcludeSemantics(excluding: false, child: child!),
-            ),
-          );
-        }
         final dy = hiddenDy * (1 - t);
         final inactive = t < 0.5;
         return RepaintBoundary(
@@ -75,9 +60,9 @@ class ReaderChromeShell extends StatelessWidget {
             ignoring: inactive,
             child: ExcludeSemantics(
               excluding: inactive,
-              child: Opacity(
-                opacity: t,
-                child: Transform.translate(offset: Offset(0, dy), child: child),
+              child: Transform.translate(
+                offset: Offset(0, dy),
+                child: LiquidFade(opacity: t, child: child!),
               ),
             ),
           ),

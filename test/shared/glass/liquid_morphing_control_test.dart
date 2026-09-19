@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/shared/glass/widgets/liquid_morphing_control.dart';
+import 'package:folio/shared/glass/widgets/adaptive_glass_effects.dart';
 
 void main() {
   Widget buildHarness({required ValueChanged<int> onBackgroundDrag}) {
@@ -23,8 +24,12 @@ void main() {
                 collapsedRect: const Rect.fromLTWH(300, 20, 48, 48),
                 expandedRect: const Rect.fromLTWH(140, 20, 208, 116),
               ),
-              collapsedChild: const Center(child: Text('•••')),
-              expandedChild: const Center(child: Text('Menu content')),
+              collapsedChild: const Center(
+                child: AdaptiveGlassDecoration(child: Text('•••')),
+              ),
+              expandedChild: const Center(
+                child: AdaptiveGlassDecoration(child: Text('Menu content')),
+              ),
             ),
           ],
         ),
@@ -61,7 +66,16 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     await tester.pump(const Duration(milliseconds: 64));
 
-    expect(find.byType(ImageFiltered), findsWidgets);
+    final effects = AdaptiveGlassEffects.of(
+      tester.element(find.text('Menu content')),
+    );
+    expect(effects.blurSigma, greaterThan(0));
+    expect(
+      tester
+          .widgetList<ImageFiltered>(find.byType(ImageFiltered))
+          .any((filter) => filter.enabled),
+      isTrue,
+    );
 
     await tester.pumpAndSettle();
     expect(find.text('Menu content'), findsOneWidget);

@@ -153,7 +153,9 @@ class _PillDivider extends StatelessWidget {
         child: SizedBox(
           width: 1,
           height: 20,
-          child: ColoredBox(color: FolioColors.separator),
+          child: AdaptiveGlassDecoration(
+            child: ColoredBox(color: FolioColors.separator),
+          ),
         ),
       ),
     );
@@ -187,7 +189,7 @@ class _PillIconButton extends StatelessWidget {
         child: SizedBox.fromSize(
           size: const Size(_FolioPill.buttonExtent, _FolioPill.buttonExtent),
           child: Center(
-            child: Opacity(
+            child: AdaptiveGlassEffects(
               opacity: onPressed == null ? 0.38 : 1,
               child: AdaptiveGlassIcon(icon, size: 17),
             ),
