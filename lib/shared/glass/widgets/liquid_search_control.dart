@@ -224,7 +224,7 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
             builder: (context, constraints) {
               final size = constraints.biggest;
               final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
-              final centerY = size.height - bottomPadding - 52;
+              final centerY = size.height - bottomPadding - 45;
               return AnimatedBuilder(
                 animation: _motion,
                 builder: (context, child) {
@@ -247,7 +247,7 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
                     deformCancel:
                         _motion.materialTarget == GlassPointerTarget.cancel,
                     collapsedCenter: Offset(
-                      size.width - _tokens.horizontalMargin - 34,
+                      size.width - _tokens.horizontalMargin - 27,
                       centerY,
                     ),
                     anchorExpandedRight: true,

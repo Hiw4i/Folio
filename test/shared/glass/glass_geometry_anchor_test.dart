@@ -10,11 +10,11 @@ GlassGeometryFrame _expanded(Size viewport) {
     separation: 1,
     displacement: Offset.zero,
     collapsedCenter: Offset(
-      viewport.width - GlassTokens().horizontalMargin - 34,
-      viewport.height - 52,
+      viewport.width - GlassTokens().horizontalMargin - 27,
+      viewport.height - 45,
     ),
     anchorExpandedRight: true,
-    centerY: viewport.height - 52,
+    centerY: viewport.height - 45,
   );
 }
 

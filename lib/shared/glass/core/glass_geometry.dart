@@ -397,7 +397,7 @@ abstract final class GlassGeometry {
     );
     final iconCenter =
         Offset(
-          _lerp(mainRect.center.dx, mainRect.left + 30, contentMorph),
+          _lerp(mainRect.center.dx, mainRect.left + 24, contentMorph),
           mainRect.center.dy,
         ) +
         contentOffset;

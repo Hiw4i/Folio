@@ -98,10 +98,10 @@ class LiquidSearchMorph extends StatelessWidget {
             // [iconCenter] already contains the content follow offset. Keep
             // the render layer at its stable layout position and apply that
             // offset as a transform so the shader mask travels with the icon.
-            left: frame.iconCenter.dx - mainContentOffset.dx - 12,
-            top: frame.iconCenter.dy - mainContentOffset.dy - 12,
-            width: 24,
-            height: 24,
+            left: frame.iconCenter.dx - mainContentOffset.dx - 10,
+            top: frame.iconCenter.dy - mainContentOffset.dy - 10,
+            width: 20,
+            height: 20,
             child: IgnorePointer(
               child: soften(
                 Transform.translate(
@@ -116,7 +116,7 @@ class LiquidSearchMorph extends StatelessWidget {
                           transitionOpacity,
                       child: const AdaptiveGlassIcon(
                         LucideIcons.search,
-                        size: 24,
+                        size: 20,
                       ),
                     ),
                   ),
@@ -126,10 +126,10 @@ class LiquidSearchMorph extends StatelessWidget {
           ),
           Positioned.fromRect(
             rect: Rect.fromLTRB(
-              frame.mainRect.left + 54,
-              frame.mainRect.center.dy - 19,
-              frame.mainRect.right - 18,
-              frame.mainRect.center.dy + 19,
+              frame.mainRect.left + 48,
+              frame.mainRect.center.dy - 15,
+              frame.mainRect.right - 16,
+              frame.mainRect.center.dy + 15,
             ),
             child: IgnorePointer(
               ignoring: frame.morph < 0.76 || !motion.wantsOpen,
