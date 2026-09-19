@@ -31,7 +31,7 @@ body {
   overflow-x: hidden;
   overscroll-behavior: none;
   scrollbar-width: none;
-  padding: 82px 10px 110px;
+  padding: 82px 0 110px;
 }
 
 #viewport::-webkit-scrollbar {
@@ -97,8 +97,8 @@ body[data-format="pptx"] #viewport {
 
 /* Landscape: immersive edge-to-edge slides. The floating chrome overlays
    the slide instead of reserving space, so the slide spans the viewport
-   from the very top to the very bottom with no black bars. A horizontal
-   swipe hides the chrome for full immersion. */
+   as far as its aspect ratio allows. Swiping only changes slides;
+   the centre tap zone is the only gesture that toggles the chrome. */
 @media (orientation: landscape) {
   body[data-format="pptx"] #viewport {
     padding: 0;

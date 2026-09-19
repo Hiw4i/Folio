@@ -13,6 +13,7 @@ import '../../../../shared/selection/folio_selection_toolbar.dart';
 import '../../../../shared/theme/folio_theme.dart';
 import '../../widgets/reader_loading_view.dart';
 import '../logic/pdf_document_renderer.dart';
+import '../logic/pdf_reading_layout.dart';
 
 class PdfDocumentView extends StatefulWidget {
   const PdfDocumentView({
@@ -41,7 +42,9 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   void initState() {
     super.initState();
     _params = PdfViewerParams(
-      margin: 12,
+      margin: 0,
+      layoutPages: layoutPdfReadingPages,
+      sizeDelegateProvider: pdfReadingSizeDelegateProvider,
       backgroundColor: FolioColors.background,
       pageDropShadow: const BoxShadow(
         color: Color(0x7A000000),

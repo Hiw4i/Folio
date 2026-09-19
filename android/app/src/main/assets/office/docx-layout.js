@@ -215,9 +215,18 @@
     const pages = Array.from(root.querySelectorAll('.docx-wrapper > section.docx'));
     // Read all unzoomed widths first; interleaving zoom writes and width reads
     // would force a new layout once per page on a long document.
-    const widths = pages.map((page) => page.offsetWidth);
+    const widths = pages.map((page) => {
+      // offsetWidth rounds to whole CSS pixels. Use the fractional, unzoomed
+      // border-box width so A4 pages reach both edges without a subpixel gap.
+      const pageStyle = getComputedStyle(page);
+      const authoredWidth = finite(pageStyle.width);
+      const extras = pageStyle.boxSizing === 'border-box' ? 0
+        : finite(pageStyle.paddingLeft) + finite(pageStyle.paddingRight)
+          + finite(pageStyle.borderLeftWidth) + finite(pageStyle.borderRightWidth);
+      return authoredWidth > 0 ? authoredWidth + extras : page.offsetWidth;
+    });
     pages.forEach((page, index) => {
-      page.style.zoom = String(Math.min(1, width / Math.max(1, widths[index])));
+      page.style.zoom = String(width / Math.max(1, widths[index]));
     });
   }
 

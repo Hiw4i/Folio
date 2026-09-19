@@ -86,7 +86,12 @@
       const current = format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop;
       const delta = current - state.lastScroll;
       state.lastScroll = current;
-      if (Math.abs(delta) > 0.5) post('scroll', { delta });
+      if (state.pointer && Math.abs(current - state.pointer.scroll) > 1) {
+        state.pointer.moved = true;
+      }
+      // Horizontal slide navigation never expresses intent to hide chrome.
+      // Keep position updates, but avoid a bridge message on every swipe frame.
+      if (format === 'docx' && Math.abs(delta) > 0.5) post('scroll', { delta });
       publishPosition(false);
     });
   }
@@ -285,9 +290,9 @@
     if (!hit) return;
     if (format === 'pptx') {
       const frame = hit.closest('.folio-slide-frame');
-      frame?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', inline: 'center' });
+      frame?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', inline: 'center' });
     } else {
-      hit.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+      hit.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', block: 'center' });
     }
     window.setTimeout(() => publishPosition(true), smooth ? 260 : 0);
   }
@@ -305,10 +310,10 @@
 
   function goToPosition(index, smooth = true) {
     const pages = pageElements();
-    const target = pages[Math.max(0, Math.min(Number(index) || 0, pages.length - 1))];
+    const target = pages[Math.max(0, Math.min(Math.trunc(Number(index) || 0), pages.length - 1))];
     if (!target) return;
     target.scrollIntoView({
-      behavior: smooth ? 'smooth' : 'auto',
+      behavior: smooth ? 'smooth' : 'instant',
       block: format === 'docx' ? 'start' : 'nearest',
       inline: format === 'pptx' ? 'center' : 'nearest',
     });
@@ -330,18 +335,56 @@
   }, true);
   document.addEventListener('dragstart', (event) => event.preventDefault(), true);
   viewport.addEventListener('scroll', onScroll, { passive: true });
+  const activePointers = new Set();
+  const tapSlop = 10;
+  const tapTimeout = 500;
+  const isInteractive = (target) => target instanceof Element
+    && !!target.closest('a, button, input, textarea, select, [contenteditable="true"]');
+
   viewport.addEventListener('pointerdown', (event) => {
-    state.pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    if (!state.ready || state.disposed) return;
+    activePointers.add(event.pointerId);
+    if (activePointers.size !== 1 || !event.isPrimary || event.button !== 0) {
+      if (state.pointer) state.pointer.moved = true;
+      return;
+    }
+    state.pointer = {
+      id: event.pointerId, x: event.clientX, y: event.clientY,
+      startedAt: event.timeStamp, moved: false,
+      interactive: isInteractive(event.target),
+      selectionActive: window.getSelection()?.isCollapsed === false,
+      scroll: format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop,
+    };
   }, { passive: true });
-  viewport.addEventListener('pointerup', (event) => {
+  // Listen on window so a release/cancellation outside the viewport also
+  // clears the sequence. Never let a drag that returns to its origin be a tap.
+  window.addEventListener('pointermove', (event) => {
     const pointer = state.pointer;
-    state.pointer = null;
+    if (pointer?.id === event.pointerId
+        && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > tapSlop) {
+      pointer.moved = true;
+    }
+  }, { passive: true });
+  window.addEventListener('pointercancel', (event) => {
+    activePointers.delete(event.pointerId);
+    if (state.pointer?.id === event.pointerId) state.pointer = null;
+  }, { passive: true });
+  window.addEventListener('pointerup', (event) => {
+    activePointers.delete(event.pointerId);
+    const pointer = state.pointer;
     if (!pointer || pointer.id !== event.pointerId) return;
-    const distance = Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y);
-    if (distance > 10 || !window.getSelection()?.isCollapsed) return;
+    state.pointer = null;
+    if (state.disposed || !state.ready || pointer.moved || activePointers.size
+        || pointer.interactive || pointer.selectionActive || isInteractive(event.target)
+        || event.timeStamp - pointer.startedAt > tapTimeout
+        || Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > tapSlop
+        || window.getSelection()?.isCollapsed === false) return;
+    const bounds = viewport.getBoundingClientRect();
+    const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+    if (x < 0 || x >= bounds.width || y < 0 || y >= bounds.height) return;
     if (format === 'pptx') {
-      if (event.clientX < viewport.clientWidth * 0.24) goToPosition(state.position - 1);
-      else if (event.clientX > viewport.clientWidth * 0.76) goToPosition(state.position + 1);
+      if (x < viewport.clientWidth * 0.24) goToPosition(state.position - 1);
+      else if (x > viewport.clientWidth * 0.76) goToPosition(state.position + 1);
       else post('tap');
     } else {
       post('tap');
@@ -349,15 +392,35 @@
   }, { passive: true });
   window.addEventListener('resize', () => {
     if (state.resizeFrame || !state.ready || state.disposed) return;
+    const position = state.position;
+    if (state.pointer) state.pointer.moved = true;
     state.resizeFrame = requestAnimationFrame(() => {
       state.resizeFrame = 0;
+      // Preserve the page-relative reading offset while Word's fit scale
+      // changes. Slide resize preserves the slide index, not stale pixels.
+      const page = format === 'docx' ? state.pages[position] : null;
+      const before = page?.getBoundingClientRect();
+      const viewportTop = viewport.getBoundingClientRect().top;
+      const fraction = before?.height > 0 ? (viewportTop - before.top) / before.height : 0;
       layoutSlides();
-      if (format === 'docx') window.FolioDocx.fit(documentRoot, viewport);
+      if (format === 'docx') {
+        window.FolioDocx.fit(documentRoot, viewport);
+        if (page && before?.height > 0) {
+          const after = page.getBoundingClientRect();
+          viewport.scrollTo({ top: viewport.scrollTop + after.top - viewportTop
+            + fraction * after.height, behavior: 'instant' });
+        }
+      } else {
+        goToPosition(position, false);
+      }
+      // A layout correction is not a user's reading gesture.
+      state.lastScroll = format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop;
       refreshGeometry(); publishPosition(true);
     });
   });
   window.addEventListener('pagehide', () => {
     state.disposed = true;
+    state.pointer = null; activePointers.clear();
     cancelAnimationFrame(state.scrollFrame); cancelAnimationFrame(state.resizeFrame);
     state.searchRevision++;
     for (const url of ownedUrls) revokeObjectURL(url);

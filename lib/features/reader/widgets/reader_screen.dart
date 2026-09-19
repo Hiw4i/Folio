@@ -62,7 +62,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   GlobalKey _activeHitKey = GlobalKey();
   late final DocumentRenderer _renderer;
   late final AnimationController _chromeController;
-  late final Animation<double> _chromeProgress;
+  late final CurvedAnimation _chromeProgress;
   final ValueNotifier<int> _progressPercent = ValueNotifier<int>(0);
   Timer? _searchDebounce;
   Timer? _initialLoadDelay;
@@ -335,7 +335,14 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _recordChromeScroll(double delta, {required bool canHide}) {
-    if (delta == 0) {
+    // Slides have their own centre-tap contract. Neither horizontal swipes,
+    // native scroll messages nor programmatic navigation may alter chrome.
+    if (_renderer is PowerPointDocumentRenderer ||
+        _searchExpanded ||
+        _menuOpen ||
+        _infoOpen ||
+        !delta.isFinite ||
+        delta == 0) {
       return;
     }
     final threshold = ReaderChromeSpec.scrollIntentDistance;
@@ -363,6 +370,14 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _handleContentTap() {
+    if (_renderer is PowerPointDocumentRenderer) {
+      if (_searchExpanded || _menuOpen || _infoOpen) {
+        return;
+      }
+      _chromeScrollIntent = 0;
+      _setChromeTarget(!_chromeTarget);
+      return;
+    }
     if (!_chromeTarget) {
       _setChromeTarget(true);
     } else if (_chromeController.isDismissed) {
@@ -371,6 +386,12 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _contentPointerDown(PointerDownEvent event) {
+    // Only text needs the raw-pointer fallback. PDF and Office already
+    // classify taps (including selection, slide edges and multi-touch).
+    // Listening twice would toggle PPTX chrome twice or reveal it on edges.
+    if (_renderer is! TextDocumentRenderer) {
+      return;
+    }
     if (_contentPointer != null) {
       _contentPointerMoved = true;
       return;
@@ -413,7 +434,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     _contentPointerMoved = false;
   }
 
-  void _handlePdfReadingGesture(double scrollDelta) {
+  void _handleVerticalReadingGesture(double scrollDelta) {
     if (_searchExpanded) {
       return;
     }
@@ -430,6 +451,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     _scrollController
       ..removeListener(_scrollChanged)
       ..dispose();
+    _chromeProgress.dispose();
     _chromeController.dispose();
     _progressPercent.dispose();
     widget.onDisposed?.call();
@@ -476,7 +498,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                     scrollController: _scrollController,
                     activeHitKey: _activeHitKey,
                     onContentTap: _handleContentTap,
-                    onPdfReadingGesture: _handlePdfReadingGesture,
+                    onReadingGesture: _handleVerticalReadingGesture,
                   ),
                 ),
               ),
@@ -679,14 +701,14 @@ class _ReaderBody extends StatelessWidget {
     required this.scrollController,
     required this.activeHitKey,
     required this.onContentTap,
-    required this.onPdfReadingGesture,
+    required this.onReadingGesture,
   });
 
   final DocumentRenderer renderer;
   final AutoScrollController scrollController;
   final GlobalKey activeHitKey;
   final VoidCallback onContentTap;
-  final ValueChanged<double> onPdfReadingGesture;
+  final ValueChanged<double> onReadingGesture;
 
   @override
   Widget build(BuildContext context) {
@@ -732,7 +754,7 @@ class _ReaderBody extends StatelessWidget {
         child: PdfDocumentView(
           renderer: pdf,
           onContentTap: onContentTap,
-          onVerticalReadingGesture: onPdfReadingGesture,
+          onVerticalReadingGesture: onReadingGesture,
         ),
       );
     }
@@ -745,12 +767,11 @@ class _ReaderBody extends StatelessWidget {
           ? WordDocumentView(
               renderer: renderer as WordDocumentRenderer,
               onContentTap: onContentTap,
-              onReadingGesture: onPdfReadingGesture,
+              onReadingGesture: onReadingGesture,
             )
           : PowerPointDocumentView(
               renderer: renderer as PowerPointDocumentRenderer,
               onContentTap: onContentTap,
-              onReadingGesture: onPdfReadingGesture,
             );
       return _OfficeStagedView(renderer: office, view: view);
     }

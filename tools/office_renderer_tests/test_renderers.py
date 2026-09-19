@@ -124,7 +124,7 @@ class OfficeRendererTests(unittest.TestCase):
     def test_docx_fits_mobile_without_side_clipping(self):
         page=self.load('basic.docx')
         for box in page.locator('section.docx').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().toJSON())'):
-            self.assertAlmostEqual(box['left'],10,delta=.1);self.assertAlmostEqual(box['right'],402,delta=.1)
+            self.assertAlmostEqual(box['left'],0,delta=.1);self.assertAlmostEqual(box['right'],412,delta=.1)
 
     def test_docx_pages_preserve_text_background_and_headers(self):
         page=self.load('basic.docx');count=page.locator('section.docx').count()
@@ -178,7 +178,7 @@ class OfficeRendererTests(unittest.TestCase):
     def test_docx_resize_keeps_page_fit(self):
         page=self.load('basic.docx');page.set_viewport_size({'width':700,'height':915});page.wait_for_timeout(120)
         box=page.locator('section.docx').first.bounding_box()
-        self.assertAlmostEqual(box['width'],680,delta=.1);self.assertAlmostEqual(box['x'],10,delta=.1)
+        self.assertAlmostEqual(box['width'],700,delta=.1);self.assertAlmostEqual(box['x'],0,delta=.1)
 
     def test_scroll_does_not_measure_all_pages(self):
         page=self.load('basic.docx')
@@ -295,4 +295,226 @@ class OfficeRendererTests(unittest.TestCase):
 
 
 
-if __name__=='__main__':unittest.main(verbosity=2)
+    def assert_no_chrome_events(self, page):
+        self.assertEqual(page.evaluate("events.filter(e => e.type === 'tap' || e.type === 'scroll')"), [])
+
+    def clear_events(self, page):
+        page.evaluate('events.length = 0')
+
+    def pointer_sequence(self, page, sequence):
+        """Dispatch edge-case sequences without relying on OS touch synthesis."""
+        page.evaluate("""sequence => {
+          const target = document.getElementById('viewport');
+          for (const [type, values] of sequence) {
+            target.dispatchEvent(new PointerEvent(type, {
+              bubbles: true, pointerId: 1, pointerType: 'touch',
+              isPrimary: true, clientX: 206, clientY: 450, button: 0,
+              ...values,
+            }));
+          }
+        }""", sequence)
+
+    def test_docx_edge_to_edge_in_both_orientations(self):
+        page = self.load('basic.docx')
+        for width, height in [(360, 800), (915, 412), (1200, 800), (412, 915)]:
+            with self.subTest(width=width, height=height):
+                page.set_viewport_size({'width': width, 'height': height})
+                page.wait_for_timeout(100)
+                boxes = page.locator('section.docx').evaluate_all(
+                    '(els) => els.map(e => e.getBoundingClientRect().toJSON())')
+                for box in boxes:
+                    self.assertAlmostEqual(box['left'], 0, delta=.1)
+                    self.assertAlmostEqual(box['right'], width, delta=.1)
+                self.assertEqual(page.evaluate('document.getElementById("viewport").scrollWidth'), width)
+
+    def test_docx_opens_landscape_wider_than_authored_page(self):
+        page = self.load('basic.docx', size=(915, 412))
+        box = page.locator('section.docx').first.bounding_box()
+        self.assertAlmostEqual(box['x'], 0, delta=.1)
+        self.assertAlmostEqual(box['width'], 915, delta=.1)
+        self.assertGreater(float(page.locator('section.docx').first.evaluate('(e) => e.style.zoom')), 1)
+
+    def test_docx_fractional_and_mixed_page_widths_fit_without_drift(self):
+        page = self.load('basic.docx')
+        boxes = page.evaluate("""() => {
+          const pages = [...document.querySelectorAll('section.docx')];
+          pages.forEach((page, index) => { page.style.width = index % 2 ? '841.9pt' : '595.3pt'; });
+          // Repeated fit must read authored widths, never the previous zoom.
+          for (let i = 0; i < 6; i++) FolioDocx.fit(document.getElementById('document'), document.getElementById("viewport"));
+          return pages.map(page => page.getBoundingClientRect().toJSON());
+        }""")
+        for box in boxes:
+            self.assertAlmostEqual(box['left'], 0, delta=.1)
+            self.assertAlmostEqual(box['right'], 412, delta=.1)
+
+    def test_docx_resize_preserves_reading_offset_without_chrome_scroll(self):
+        page = self.load('basic.docx')
+        page.evaluate('FolioOffice.goToPosition(1, false)')
+        page.wait_for_timeout(100)
+        before = page.locator('section.docx').nth(1).bounding_box()
+        before_fraction = -before['y'] / before['height']
+        self.clear_events(page)
+        page.set_viewport_size({'width': 915, 'height': 412})
+        page.wait_for_timeout(150)
+        after = page.locator('section.docx').nth(1).bounding_box()
+        self.assertAlmostEqual(-after['y'] / after['height'], before_fraction, delta=.01)
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_centre_tap_is_single_event_without_navigation(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        page.mouse.click(206, 450)
+        self.assertEqual(page.evaluate('events'), [{'type': 'tap'}])
+        self.assertEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), 0)
+
+    def test_pptx_edge_taps_navigate_without_chrome_events(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        page.mouse.click(390, 450)
+        page.wait_for_function('Math.abs(document.getElementById("viewport").scrollLeft - 412) < 1')
+        page.wait_for_timeout(60)
+        self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 2)'))
+        self.assert_no_chrome_events(page)
+        page.mouse.click(20, 450)
+        page.wait_for_function('document.getElementById("viewport").scrollLeft < 1')
+        page.wait_for_timeout(60)
+        self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 1)'))
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_first_and_last_edge_do_not_toggle_chrome(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        page.mouse.click(20, 450)
+        page.wait_for_timeout(80)
+        self.assert_no_chrome_events(page)
+        page.evaluate('FolioOffice.goToPosition(1, false)')
+        page.wait_for_timeout(80)
+        self.clear_events(page)
+        page.mouse.click(390, 450)
+        page.wait_for_timeout(80)
+        self.assert_no_chrome_events(page)
+        self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), 412, delta=1)
+
+    def test_pptx_programmatic_navigation_does_not_emit_chrome_scroll(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        page.evaluate('FolioOffice.goToPosition(1, false)')
+        # Explicit instant must override the viewport's CSS smooth behavior.
+        self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), 412, delta=1)
+        page.wait_for_timeout(80)
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_real_touch_swipe_only_changes_slide(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        session = page.context.new_cdp_session(page)
+        session.send('Emulation.setTouchEmulationEnabled', {'enabled': True})
+        session.send('Input.dispatchTouchEvent', {
+            'type': 'touchStart', 'touchPoints': [{'x': 350, 'y': 450}],
+        })
+        for x in range(320, 19, -30):
+            session.send('Input.dispatchTouchEvent', {
+                'type': 'touchMove', 'touchPoints': [{'x': x, 'y': 450}],
+            })
+            page.wait_for_timeout(20)
+        session.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+        page.wait_for_function('Math.abs(document.getElementById("viewport").scrollLeft - 412) < 1')
+        page.wait_for_timeout(80)
+        self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 2)'))
+        self.assert_no_chrome_events(page)
+        session.detach()
+
+    def test_pptx_drag_returning_to_origin_is_not_a_tap(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        self.pointer_sequence(page, [
+            ['pointerdown', {}], ['pointermove', {'clientX': 100}],
+            ['pointermove', {}], ['pointerup', {}],
+        ])
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_pointercancel_clears_tap_and_next_tap_still_works(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        self.pointer_sequence(page, [
+            ['pointerdown', {}], ['pointercancel', {}], ['pointerup', {}],
+        ])
+        self.assert_no_chrome_events(page)
+        page.mouse.click(206, 450)
+        self.assertEqual(page.evaluate('events'), [{'type': 'tap'}])
+
+    def test_pptx_multitouch_never_leaves_a_tap_candidate(self):
+        page = self.load('basic.pptx')
+        second = {'pointerId': 2, 'isPrimary': False, 'clientX': 300}
+        for releases in [[second, {}], [{}, second]]:
+            with self.subTest(releases=releases):
+                self.clear_events(page)
+                self.pointer_sequence(page, [
+                    ['pointerdown', {}], ['pointerdown', second],
+                    ['pointerup', releases[0]], ['pointerup', releases[1]],
+                ])
+                self.assert_no_chrome_events(page)
+        page.mouse.click(206, 450)
+        self.assertEqual(page.evaluate('events'), [{'type': 'tap'}])
+
+    def test_pptx_long_press_does_not_toggle_chrome(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        page.mouse.move(206, 200)
+        page.mouse.down()
+        page.wait_for_timeout(550)
+        page.mouse.up()
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_secondary_click_does_not_toggle_chrome(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        page.mouse.click(206, 450, button='right')
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_link_does_not_toggle_chrome(self):
+        page = self.load('basic.pptx')
+        page.evaluate("""() => {
+          const link = document.createElement('a'); link.href = 'https://example.invalid';
+          link.style.cssText = 'position:fixed;left:180px;top:435px;width:50px;height:30px';
+          link.textContent = 'Link'; document.getElementById("viewport").appendChild(link);
+        }""")
+        self.clear_events(page)
+        page.mouse.click(206, 450)
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_selected_text_is_not_a_chrome_tap(self):
+        page = self.load('basic.pptx')
+        page.evaluate("""() => {
+          const range = document.createRange();
+          range.selectNodeContents(document.querySelector('.text-block'));
+          getSelection().removeAllRanges(); getSelection().addRange(range);
+        }""")
+        self.clear_events(page)
+        self.pointer_sequence(page, [['pointerdown', {}], ['pointerup', {}]])
+        self.assert_no_chrome_events(page)
+
+    def test_pptx_rotation_keeps_current_slide_without_chrome_events(self):
+        page = self.load('basic.pptx')
+        page.evaluate('FolioOffice.goToPosition(1, false)')
+        page.wait_for_timeout(80)
+        for width, height in [(915, 412), (360, 800), (412, 915)]:
+            with self.subTest(width=width):
+                self.clear_events(page)
+                page.set_viewport_size({'width': width, 'height': height})
+                page.wait_for_timeout(150)
+                self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), width, delta=1)
+                self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 2)'))
+                self.assert_no_chrome_events(page)
+
+    def test_pptx_disposed_document_ignores_pointer_events(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        page.evaluate('window.dispatchEvent(new Event("pagehide"))')
+        self.pointer_sequence(page, [['pointerdown', {}], ['pointerup', {}]])
+        self.assert_no_chrome_events(page)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
+

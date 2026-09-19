@@ -12,13 +12,13 @@ class OfficeDocumentPlatformView extends StatefulWidget {
   const OfficeDocumentPlatformView({
     required this.renderer,
     required this.onContentTap,
-    required this.onReadingGesture,
+    this.onReadingGesture,
     super.key,
   });
 
   final OfficeDocumentRendererBase renderer;
   final VoidCallback onContentTap;
-  final ValueChanged<double> onReadingGesture;
+  final ValueChanged<double>? onReadingGesture;
 
   @override
   State<OfficeDocumentPlatformView> createState() =>
@@ -88,9 +88,9 @@ class _OfficeDocumentPlatformViewState
       case 'tap':
         widget.onContentTap();
       case 'scroll':
-        final delta = (event['delta'] as num?)?.toDouble() ?? 0;
-        if (delta != 0) {
-          widget.onReadingGesture(delta);
+        final rawDelta = event['delta'];
+        if (rawDelta is num && rawDelta.isFinite && rawDelta != 0) {
+          widget.onReadingGesture?.call(rawDelta.toDouble());
         }
     }
   }
