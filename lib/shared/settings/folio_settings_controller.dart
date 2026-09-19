@@ -14,6 +14,7 @@ class FolioSettingsController extends ChangeNotifier {
   Future<void>? _saving;
   bool _blurChanged = false;
   bool _motionChanged = false;
+  bool _navigationChanged = false;
   bool _saveRequested = false;
   bool _disposed = false;
   Object? _saveError;
@@ -32,6 +33,9 @@ class FolioSettingsController extends ChangeNotifier {
         blurEnabled: _blurChanged ? _settings.blurEnabled : null,
         liquidMotionEnabled: _motionChanged
             ? _settings.liquidMotionEnabled
+            : null,
+        showNavigationOnScrollUp: _navigationChanged
+            ? _settings.showNavigationOnScrollUp
             : null,
       );
       if (next != _settings) {
@@ -59,6 +63,15 @@ class FolioSettingsController extends ChangeNotifier {
     }
     _motionChanged = true;
     _settings = _settings.copyWith(liquidMotionEnabled: enabled);
+    _changed();
+  }
+
+  void setShowNavigationOnScrollUp(bool enabled) {
+    if (_disposed || enabled == _settings.showNavigationOnScrollUp) {
+      return;
+    }
+    _navigationChanged = true;
+    _settings = _settings.copyWith(showNavigationOnScrollUp: enabled);
     _changed();
   }
 

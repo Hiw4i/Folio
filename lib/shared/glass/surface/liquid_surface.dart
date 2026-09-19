@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../../settings/folio_settings_scope.dart';
 
 import '../core/glass_tokens.dart';
+import 'liquid_surface_style.dart';
 
 /// Canonical liquid surfaces: one blur, one shadow language, one rim.
 ///
@@ -168,12 +169,8 @@ class LiquidCase extends StatelessWidget {
               opacity: transitionOpacity,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: blurEnabled ? fill : const Color(0xFF202123),
+                  color: blurEnabled ? fill : LiquidSurfaceStyle.opaqueFill,
                   borderRadius: radius,
-                  border: Border.all(
-                    color: const Color(0x42FFFFFF),
-                    width: 0.8,
-                  ),
                   gradient: blurEnabled
                       ? const LinearGradient(
                           begin: Alignment.topLeft,
@@ -182,7 +179,10 @@ class LiquidCase extends StatelessWidget {
                         )
                       : null,
                 ),
-                child: Padding(padding: padding, child: child),
+                child: CustomPaint(
+                  foregroundPainter: LiquidCaseRimPainter(radius: radius),
+                  child: Padding(padding: padding, child: child),
+                ),
               ),
             ),
           ),

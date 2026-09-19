@@ -1,22 +1,32 @@
 import 'package:flutter/foundation.dart';
 
-/// Only optional visual effects live here. Scrolling, navigation and document
-/// rendering must not depend on the liquid-glass motion preference.
+/// Persisted appearance and reading preferences. Navigation and document
+/// rendering remain independent of the optional liquid-glass motion effect.
 @immutable
 class FolioSettings {
   const FolioSettings({
     this.blurEnabled = true,
     this.liquidMotionEnabled = true,
+    this.showNavigationOnScrollUp = true,
   });
 
   final bool blurEnabled;
   final bool liquidMotionEnabled;
 
-  FolioSettings copyWith({bool? blurEnabled, bool? liquidMotionEnabled}) =>
-      FolioSettings(
-        blurEnabled: blurEnabled ?? this.blurEnabled,
-        liquidMotionEnabled: liquidMotionEnabled ?? this.liquidMotionEnabled,
-      );
+  /// Preserve the existing upward-scroll shortcut for older settings files.
+  /// PPTX uses centre taps only and never changes controls during a swipe.
+  final bool showNavigationOnScrollUp;
+
+  FolioSettings copyWith({
+    bool? blurEnabled,
+    bool? liquidMotionEnabled,
+    bool? showNavigationOnScrollUp,
+  }) => FolioSettings(
+    blurEnabled: blurEnabled ?? this.blurEnabled,
+    liquidMotionEnabled: liquidMotionEnabled ?? this.liquidMotionEnabled,
+    showNavigationOnScrollUp:
+        showNavigationOnScrollUp ?? this.showNavigationOnScrollUp,
+  );
 
   factory FolioSettings.fromJson(Map<String, Object?> json) => FolioSettings(
     blurEnabled: json['blurEnabled'] is bool
@@ -25,20 +35,29 @@ class FolioSettings {
     liquidMotionEnabled: json['liquidMotionEnabled'] is bool
         ? json['liquidMotionEnabled']! as bool
         : true,
+    showNavigationOnScrollUp: json['showNavigationOnScrollUp'] is bool
+        ? json['showNavigationOnScrollUp']! as bool
+        : true,
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
     'version': 1,
     'blurEnabled': blurEnabled,
     'liquidMotionEnabled': liquidMotionEnabled,
+    'showNavigationOnScrollUp': showNavigationOnScrollUp,
   };
 
   @override
   bool operator ==(Object other) =>
       other is FolioSettings &&
       other.blurEnabled == blurEnabled &&
-      other.liquidMotionEnabled == liquidMotionEnabled;
+      other.liquidMotionEnabled == liquidMotionEnabled &&
+      other.showNavigationOnScrollUp == showNavigationOnScrollUp;
 
   @override
-  int get hashCode => Object.hash(blurEnabled, liquidMotionEnabled);
+  int get hashCode => Object.hash(
+    blurEnabled,
+    liquidMotionEnabled,
+    showNavigationOnScrollUp,
+  );
 }

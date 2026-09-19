@@ -14,6 +14,7 @@ void main() {
     const settings = FolioSettings();
     expect(settings.blurEnabled, isTrue);
     expect(settings.liquidMotionEnabled, isTrue);
+    expect(settings.showNavigationOnScrollUp, isTrue);
   });
 
   test('JSON preserves independent switches and tolerates invalid fields', () {
@@ -26,6 +27,110 @@ void main() {
       }),
       const FolioSettings(liquidMotionEnabled: false),
     );
+  });
+
+  test('navigation preference round-trips independently of visual effects', () {
+    for (final blur in <bool>[true, false]) {
+      for (final motion in <bool>[true, false]) {
+        for (final navigation in <bool>[true, false]) {
+          final settings = FolioSettings(
+            blurEnabled: blur,
+            liquidMotionEnabled: motion,
+            showNavigationOnScrollUp: navigation,
+          );
+          expect(FolioSettings.fromJson(settings.toJson()), settings);
+          expect(settings.copyWith(), settings);
+          expect(
+            settings.copyWith(showNavigationOnScrollUp: !navigation),
+            isNot(settings),
+          );
+          expect(
+            settings.copyWith(blurEnabled: !blur).showNavigationOnScrollUp,
+            navigation,
+          );
+        }
+      }
+    }
+  });
+
+  test('older and malformed navigation fields preserve the old default', () {
+    for (final value in <Object?>[null, 'false', 0, <String>[]]) {
+      expect(
+        FolioSettings.fromJson(<String, Object?>{
+          'showNavigationOnScrollUp': value,
+        }).showNavigationOnScrollUp,
+        isTrue,
+      );
+    }
+    expect(FolioSettings.fromJson(<String, Object?>{}), const FolioSettings());
+  });
+
+  test('startup load preserves an already changed navigation preference', () async {
+    final store = _ControlledStore();
+    final controller = FolioSettingsController(store: store);
+    addTearDown(controller.dispose);
+    final loading = controller.load();
+    controller.setShowNavigationOnScrollUp(false);
+    store.loaded.complete(const FolioSettings(
+      blurEnabled: false,
+      liquidMotionEnabled: false,
+    ));
+    await loading;
+    await controller.flush();
+    expect(controller.settings, const FolioSettings(
+      blurEnabled: false,
+      liquidMotionEnabled: false,
+      showNavigationOnScrollUp: false,
+    ));
+    expect(store.written.last, controller.settings);
+  });
+
+  test('changing an effect during load still restores stored navigation', () async {
+    final store = _ControlledStore();
+    final controller = FolioSettingsController(store: store);
+    addTearDown(controller.dispose);
+    final loading = controller.load();
+    controller.setBlurEnabled(false);
+    store.loaded.complete(const FolioSettings(showNavigationOnScrollUp: false));
+    await loading;
+    await controller.flush();
+    expect(controller.settings, const FolioSettings(
+      blurEnabled: false,
+      showNavigationOnScrollUp: false,
+    ));
+    expect(store.written.last, controller.settings);
+  });
+
+  test('navigation changes persist across a new controller instance', () async {
+    final store = MemorySettingsStore();
+    final first = FolioSettingsController(store: store);
+    await first.load();
+    first.setShowNavigationOnScrollUp(false);
+    await first.flush();
+    first.dispose();
+    final second = FolioSettingsController(store: store);
+    addTearDown(second.dispose);
+    await second.load();
+    expect(second.settings, const FolioSettings(showNavigationOnScrollUp: false));
+    second.setShowNavigationOnScrollUp(false);
+    await second.flush();
+    expect(store.saves, 1);
+  });
+
+  test('navigation writes are serialized and retain the latest setting', () async {
+    final store = _ControlledStore()..blockFirstSave = true;
+    store.loaded.complete(const FolioSettings());
+    final controller = FolioSettingsController(store: store);
+    addTearDown(controller.dispose);
+    await controller.load();
+    controller.setShowNavigationOnScrollUp(false);
+    await store.firstWriteStarted.future;
+    controller.setShowNavigationOnScrollUp(true);
+    controller.setBlurEnabled(false);
+    store.firstWriteFinished.complete();
+    await controller.flush();
+    expect(store.maxConcurrentWrites, 1);
+    expect(store.written.last, const FolioSettings(blurEnabled: false));
   });
 
   test('disk load cannot undo user interaction during startup', () async {
@@ -120,6 +225,7 @@ void main() {
     await first.load();
     first.setBlurEnabled(false);
     first.setLiquidMotionEnabled(false);
+    first.setShowNavigationOnScrollUp(false);
     await first.flush();
     first.dispose();
     final second = FolioSettingsController(store: store);
@@ -127,7 +233,11 @@ void main() {
     await second.load();
     expect(
       second.settings,
-      const FolioSettings(blurEnabled: false, liquidMotionEnabled: false),
+      const FolioSettings(
+        blurEnabled: false,
+        liquidMotionEnabled: false,
+        showNavigationOnScrollUp: false,
+      ),
     );
     expect(
       await File('${directory.path}/folio_settings.v1.json.tmp').exists(),

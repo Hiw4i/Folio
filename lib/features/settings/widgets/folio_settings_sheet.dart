@@ -71,7 +71,7 @@ class FolioSettingsSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    _EffectSwitch(
+                    _SettingsSwitch(
                       switchKey: const ValueKey<String>('settings_blur'),
                       title: 'Blur',
                       description: 'Frosted glass backgrounds',
@@ -79,7 +79,7 @@ class FolioSettingsSheet extends StatelessWidget {
                       onChanged: controller.setBlurEnabled,
                     ),
                     const SizedBox(height: 8),
-                    _EffectSwitch(
+                    _SettingsSwitch(
                       switchKey: const ValueKey<String>(
                         'settings_liquid_motion',
                       ),
@@ -92,6 +92,27 @@ class FolioSettingsSheet extends StatelessWidget {
                     const Text(
                       'Turn off effects to reduce graphics load.',
                       style: FolioText.metadata,
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Reading',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: FolioColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _SettingsSwitch(
+                      switchKey: const ValueKey<String>(
+                        'settings_show_navigation_on_scroll_up',
+                      ),
+                      title: 'Navigation follows scroll',
+                      description: 'Hide on scroll down, reveal on scroll up. '
+                          'Taps always toggle them.',
+                      value: controller.settings.showNavigationOnScrollUp,
+                      onChanged: controller.setShowNavigationOnScrollUp,
                     ),
                     if (controller.hasSaveError) ...<Widget>[
                       const SizedBox(height: 12),
@@ -115,8 +136,8 @@ class FolioSettingsSheet extends StatelessWidget {
   }
 }
 
-class _EffectSwitch extends StatelessWidget {
-  const _EffectSwitch({
+class _SettingsSwitch extends StatelessWidget {
+  const _SettingsSwitch({
     required this.switchKey,
     required this.title,
     required this.description,

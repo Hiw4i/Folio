@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../../settings/folio_settings_scope.dart';
 
 import 'liquid_surface.dart';
+import 'liquid_surface_style.dart';
 
 class GlassShell extends StatelessWidget {
   const GlassShell({
@@ -168,7 +169,7 @@ class _ShellPainter extends CustomPainter {
   /// Alpha controls the strength of the pull.
   static final Paint _fillPaint = Paint()..color = const Color(0x33868683);
   static final Paint _opaqueFillPaint = Paint()
-    ..color = const Color(0xFF202123);
+    ..color = LiquidSurfaceStyle.opaqueFill;
   static final Paint _innerWidePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 11
@@ -180,45 +181,16 @@ class _ShellPainter extends CustomPainter {
     ..color = const Color(0xFFFFFFFF).withValues(alpha: 0.10)
     ..maskFilter = const MaskFilter.blur(BlurStyle.inner, 3);
 
-  /// Rim gradient is constant; only its shader depends on [size], which is
-  /// stable per surface. Cached instead of recreated every frame.
-  static const LinearGradient _rimGradient = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: <Color>[
-      Color(0x82FFFFFF),
-      Color(0x68E6E6E4),
-      Color(0x48AFAFAD),
-      Color(0x72F4F4F2),
-      Color(0x3C9A9A98),
-    ],
-    stops: <double>[0, 0.25, 0.48, 0.74, 1],
-  );
-  static final Map<Size, ui.Shader> _rimShaderCache = <Size, ui.Shader>{};
-
-  static ui.Shader _rimShaderFor(Size size) {
-    var shader = _rimShaderCache[size];
-    if (shader == null) {
-      // Surface sizes are stable and few; still, never grow unbounded.
-      if (_rimShaderCache.length > 32) {
-        _rimShaderCache.clear();
-      }
-      shader = _rimGradient.createShader(Offset.zero & size);
-      _rimShaderCache[size] = shader;
-    }
-    return shader;
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawPath(path, blurEnabled ? _fillPaint : _opaqueFillPaint);
-    if (blurEnabled) {
-      canvas.save();
-      canvas.clipPath(path);
-      canvas.drawPath(path, _innerWidePaint);
-      canvas.drawPath(path, _innerNarrowPaint);
-      canvas.restore();
-    }
+    // The inset edge belongs to the material, not to the backdrop filter.
+    // Keep its original depth when the user turns background blur off.
+    canvas.save();
+    canvas.clipPath(path);
+    canvas.drawPath(path, _innerWidePaint);
+    canvas.drawPath(path, _innerNarrowPaint);
+    canvas.restore();
     final pressAmount = press.clamp(0.0, 1.0);
     if (pressAmount > 0.01) {
       canvas.save();
@@ -241,11 +213,12 @@ class _ShellPainter extends CustomPainter {
       canvas.restore();
     }
 
-    final rim = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = focused ? 1.15 : 0.82
-      ..shader = _rimShaderFor(size);
-    canvas.drawPath(path, rim);
+    LiquidSurfaceStyle.paintRim(
+      canvas,
+      path,
+      bounds: path.getBounds(),
+      width: focused ? 1.15 : 0.82,
+    );
 
     if (pressAmount > 0.01) {
       canvas.drawPath(

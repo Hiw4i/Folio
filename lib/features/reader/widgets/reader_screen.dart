@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../../shared/glass/liquid_glass.dart';
+import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
 import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
@@ -79,6 +81,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   bool _textSelectionActive = false;
   bool _chromeReducedMotion = false;
   double _chromeScrollIntent = 0;
+  bool _showNavigationOnScrollUp = true;
 
   @override
   void initState() {
@@ -121,6 +124,14 @@ class _ReaderScreenState extends State<ReaderScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final showOnScrollUp = FolioSettingsScope.settingsOf(
+      context,
+    ).showNavigationOnScrollUp;
+    if (showOnScrollUp != _showNavigationOnScrollUp) {
+      _showNavigationOnScrollUp = showOnScrollUp;
+      // A preference change must not complete a half-recorded scroll intent.
+      _chromeScrollIntent = 0;
+    }
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     if (reducedMotion != _chromeReducedMotion) {
       _chromeReducedMotion = reducedMotion;
@@ -134,6 +145,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _setChromeTarget(bool visible) {
+    _chromeScrollIntent = 0;
     if (_chromeTarget == visible) {
       return;
     }
@@ -316,7 +328,14 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
-    if (_searchExpanded || _textSelectionActive) {
+    // PDF and Office already report classified reading gestures. Only the
+    // top-level vertical text viewport should also use Flutter notifications;
+    // nested Markdown code/table scrollers must not affect the reader chrome.
+    if (_renderer is! TextDocumentRenderer ||
+        notification.depth != 0 ||
+        notification.metrics.axis != Axis.vertical ||
+        _searchExpanded ||
+        _textSelectionActive) {
       return false;
     }
     if (notification case ScrollUpdateNotification(
@@ -330,7 +349,8 @@ class _ReaderScreenState extends State<ReaderScreen>
       if (dragDetails != null) {
         _recordChromeScroll(scrollDelta ?? 0, canHide: metrics.pixels > 24);
       }
-    } else if (notification is ScrollEndNotification) {
+    } else if (notification is ScrollStartNotification ||
+        notification is ScrollEndNotification) {
       _chromeScrollIntent = 0;
     }
     return false;
@@ -339,12 +359,20 @@ class _ReaderScreenState extends State<ReaderScreen>
   void _recordChromeScroll(double delta, {required bool canHide}) {
     // Slides have their own centre-tap contract. Neither horizontal swipes,
     // native scroll messages nor programmatic navigation may alter chrome.
+    // When scroll-driven navigation is disabled the panels ignore scrolling
+    // entirely (both auto-hide on scroll down and reveal on scroll up);
+    // content taps always remain available as a manual toggle.
     if (_renderer is PowerPointDocumentRenderer ||
         _searchExpanded ||
         _menuOpen ||
         _infoOpen ||
+        _textSelectionActive ||
+        !_showNavigationOnScrollUp ||
         !delta.isFinite ||
         delta == 0) {
+      if (!_showNavigationOnScrollUp) {
+        _chromeScrollIntent = 0;
+      }
       return;
     }
     final threshold = ReaderChromeSpec.scrollIntentDistance;
@@ -372,19 +400,13 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _handleContentTap() {
-    if (_renderer is PowerPointDocumentRenderer) {
-      if (_searchExpanded || _menuOpen || _infoOpen) {
-        return;
-      }
-      _chromeScrollIntent = 0;
-      _setChromeTarget(!_chromeTarget);
+    if (_searchExpanded || _menuOpen || _infoOpen || _textSelectionActive) {
       return;
     }
-    if (!_chromeTarget) {
-      _setChromeTarget(true);
-    } else if (_chromeController.isDismissed) {
-      _driveChrome();
-    }
+    // Every format uses the same target, not the current animated opacity.
+    // A second tap can reverse an in-flight hide/show without losing intent.
+    // PPTX sends only centre taps; its edge taps remain slide navigation.
+    _setChromeTarget(!_chromeTarget);
   }
 
   void _contentPointerDown(PointerDownEvent event) {
@@ -396,6 +418,9 @@ class _ReaderScreenState extends State<ReaderScreen>
     }
     if (_contentPointer != null) {
       _contentPointerMoved = true;
+      return;
+    }
+    if (event.buttons != kPrimaryButton) {
       return;
     }
     _contentPointer = event.pointer;

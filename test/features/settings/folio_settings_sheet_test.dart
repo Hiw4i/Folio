@@ -29,8 +29,12 @@ void main() {
     expect(find.byType(FolioSettingsSheet), findsOneWidget);
     final blur = find.byKey(const ValueKey<String>('settings_blur'));
     final motion = find.byKey(const ValueKey<String>('settings_liquid_motion'));
+    final navigation = find.byKey(
+      const ValueKey<String>('settings_show_navigation_on_scroll_up'),
+    );
     expect(tester.widget<Switch>(blur).value, isTrue);
     expect(tester.widget<Switch>(motion).value, isTrue);
+    expect(tester.widget<Switch>(navigation).value, isTrue);
     await tester.tap(blur);
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(blur).value, isFalse);
@@ -45,6 +49,12 @@ void main() {
     await tester.tap(motion);
     await tester.pumpAndSettle();
     expect(store.value.liquidMotionEnabled, isFalse);
+    await tester.ensureVisible(navigation);
+    await tester.tap(navigation);
+    await tester.pumpAndSettle();
+    expect(store.value.showNavigationOnScrollUp, isFalse);
+    expect(store.value.blurEnabled, isFalse);
+    expect(store.value.liquidMotionEnabled, isFalse);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(FolioSettingsSheet), findsNothing);
@@ -52,6 +62,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(blur).value, isFalse);
     expect(tester.widget<Switch>(motion).value, isFalse);
+    expect(tester.widget<Switch>(navigation).value, isFalse);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -86,6 +97,13 @@ void main() {
     await tester.tap(motion);
     await tester.pumpAndSettle();
     expect(controller.settings.liquidMotionEnabled, isFalse);
+    final navigation = find.byKey(
+      const ValueKey<String>('settings_show_navigation_on_scroll_up'),
+    );
+    await tester.ensureVisible(navigation);
+    await tester.tap(navigation);
+    await tester.pumpAndSettle();
+    expect(controller.settings.showNavigationOnScrollUp, isFalse);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
