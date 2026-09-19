@@ -45,7 +45,10 @@ void main() {
   testWidgets('opening uses the reference curve, 700ms and 750px travel', (
     tester,
   ) async {
-    await _pumpHost(tester);
+    await _pumpHost(
+      tester,
+      settings: const FolioSettings(blurEnabled: true),
+    );
     await _open(tester);
     final route = _route(tester);
     expect(route.transitionDuration, const Duration(milliseconds: 700));
@@ -70,7 +73,11 @@ void main() {
     tester,
   ) async {
     var completed = false;
-    await _pumpHost(tester, onClosed: () => completed = true);
+    await _pumpHost(
+      tester,
+      settings: const FolioSettings(blurEnabled: true),
+      onClosed: () => completed = true,
+    );
     await _open(tester);
     await tester.pumpAndSettle();
     final route = _route(tester);
@@ -110,7 +117,10 @@ void main() {
   testWidgets('Blur disables both filters without remounting the sheet', (
     tester,
   ) async {
-    final controller = await _pumpHost(tester);
+    final controller = await _pumpHost(
+      tester,
+      settings: const FolioSettings(blurEnabled: true),
+    );
     await _open(tester);
     await tester.pumpAndSettle();
     final element = tester.element(_sheet);
@@ -144,7 +154,10 @@ void main() {
     (tester) async {
       final controller = await _pumpHost(
         tester,
-        settings: const FolioSettings(liquidMotionEnabled: false),
+        settings: const FolioSettings(
+          blurEnabled: true,
+          liquidMotionEnabled: false,
+        ),
       );
       await _open(tester);
       final route = _route(tester);
@@ -339,7 +352,11 @@ void main() {
   testWidgets(
     'system reduced motion avoids a zero-duration ratio and tickers',
     (tester) async {
-      await _pumpHost(tester, disableAnimations: true);
+      await _pumpHost(
+        tester,
+        settings: const FolioSettings(blurEnabled: true),
+        disableAnimations: true,
+      );
       await _open(tester);
       await tester.pumpAndSettle();
       expect(_route(tester).transitionDuration, Duration.zero);

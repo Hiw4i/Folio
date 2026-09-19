@@ -10,15 +10,15 @@ import 'package:folio/shared/settings/folio_settings_store.dart';
 import '../../support/memory_settings_store.dart';
 
 void main() {
-  test('defaults preserve both visual effects', () {
+  test('defaults disable blur by default', () {
     const settings = FolioSettings();
-    expect(settings.blurEnabled, isTrue);
+    expect(settings.blurEnabled, isFalse);
     expect(settings.liquidMotionEnabled, isTrue);
     expect(settings.showNavigationOnScrollUp, isTrue);
   });
 
   test('JSON preserves independent switches and tolerates invalid fields', () {
-    const settings = FolioSettings(blurEnabled: false);
+    const settings = FolioSettings(blurEnabled: true);
     expect(FolioSettings.fromJson(settings.toJson()), settings);
     expect(
       FolioSettings.fromJson(<String, Object?>{
@@ -26,6 +26,10 @@ void main() {
         'liquidMotionEnabled': false,
       }),
       const FolioSettings(liquidMotionEnabled: false),
+    );
+    expect(
+      FolioSettings.fromJson(<String, Object?>{}).blurEnabled,
+      isFalse,
     );
   });
 
@@ -90,12 +94,12 @@ void main() {
     final controller = FolioSettingsController(store: store);
     addTearDown(controller.dispose);
     final loading = controller.load();
-    controller.setBlurEnabled(false);
+    controller.setBlurEnabled(true);
     store.loaded.complete(const FolioSettings(showNavigationOnScrollUp: false));
     await loading;
     await controller.flush();
     expect(controller.settings, const FolioSettings(
-      blurEnabled: false,
+      blurEnabled: true,
       showNavigationOnScrollUp: false,
     ));
     expect(store.written.last, controller.settings);
@@ -126,11 +130,11 @@ void main() {
     controller.setShowNavigationOnScrollUp(false);
     await store.firstWriteStarted.future;
     controller.setShowNavigationOnScrollUp(true);
-    controller.setBlurEnabled(false);
+    controller.setBlurEnabled(true);
     store.firstWriteFinished.complete();
     await controller.flush();
     expect(store.maxConcurrentWrites, 1);
-    expect(store.written.last, const FolioSettings(blurEnabled: false));
+    expect(store.written.last, const FolioSettings(blurEnabled: true));
   });
 
   test('disk load cannot undo user interaction during startup', () async {
@@ -138,13 +142,13 @@ void main() {
     final controller = FolioSettingsController(store: store);
     addTearDown(controller.dispose);
     final loading = controller.load();
-    controller.setBlurEnabled(false);
+    controller.setBlurEnabled(true);
     store.loaded.complete(const FolioSettings(liquidMotionEnabled: false));
     await loading;
     await controller.flush();
     expect(
       controller.settings,
-      const FolioSettings(blurEnabled: false, liquidMotionEnabled: false),
+      const FolioSettings(blurEnabled: true, liquidMotionEnabled: false),
     );
     expect(store.written.last, controller.settings);
   });
@@ -157,10 +161,10 @@ void main() {
       final controller = FolioSettingsController(store: store);
       addTearDown(controller.dispose);
       await controller.load();
-      controller.setBlurEnabled(false);
+      controller.setBlurEnabled(true);
       await store.firstWriteStarted.future;
       controller.setLiquidMotionEnabled(false);
-      controller.setBlurEnabled(true);
+      controller.setBlurEnabled(false);
       expect(store.maxConcurrentWrites, 1);
       store.firstWriteFinished.complete();
       await controller.flush();
@@ -178,15 +182,15 @@ void main() {
     final controller = FolioSettingsController(store: store);
     addTearDown(controller.dispose);
     await controller.load();
-    controller.setBlurEnabled(false);
+    controller.setBlurEnabled(true);
     await controller.flush();
-    expect(controller.settings.blurEnabled, isFalse);
+    expect(controller.settings.blurEnabled, isTrue);
     expect(controller.hasSaveError, isTrue);
     store.failWrites = false;
     controller.retrySave();
     await controller.flush();
     expect(controller.hasSaveError, isFalse);
-    expect(store.written.last.blurEnabled, isFalse);
+    expect(store.written.last.blurEnabled, isTrue);
   });
 
   test(
@@ -194,11 +198,11 @@ void main() {
     () async {
       final store = _ControlledStore();
       final controller = FolioSettingsController(store: store);
-      controller.setBlurEnabled(false);
+      controller.setBlurEnabled(true);
       controller.dispose();
       store.loaded.complete(const FolioSettings());
       await controller.flush();
-      expect(store.written.single.blurEnabled, isFalse);
+      expect(store.written.single.blurEnabled, isTrue);
       controller.setLiquidMotionEnabled(false);
       expect(controller.settings.liquidMotionEnabled, isTrue);
     },
@@ -209,7 +213,7 @@ void main() {
     final controller = FolioSettingsController(store: store);
     addTearDown(controller.dispose);
     await controller.load();
-    controller.setBlurEnabled(true);
+    controller.setBlurEnabled(false);
     await controller.flush();
     expect(store.saves, 0);
   });
@@ -223,7 +227,7 @@ void main() {
     expect(await store.load(), const FolioSettings());
     final first = FolioSettingsController(store: store);
     await first.load();
-    first.setBlurEnabled(false);
+    first.setBlurEnabled(true);
     first.setLiquidMotionEnabled(false);
     first.setShowNavigationOnScrollUp(false);
     await first.flush();
@@ -234,7 +238,7 @@ void main() {
     expect(
       second.settings,
       const FolioSettings(
-        blurEnabled: false,
+        blurEnabled: true,
         liquidMotionEnabled: false,
         showNavigationOnScrollUp: false,
       ),

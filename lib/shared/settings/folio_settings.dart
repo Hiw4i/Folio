@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 @immutable
 class FolioSettings {
   const FolioSettings({
-    this.blurEnabled = true,
+    this.blurEnabled = false,
     this.liquidMotionEnabled = true,
     this.showNavigationOnScrollUp = true,
   });
@@ -31,7 +31,7 @@ class FolioSettings {
   factory FolioSettings.fromJson(Map<String, Object?> json) => FolioSettings(
     blurEnabled: json['blurEnabled'] is bool
         ? json['blurEnabled']! as bool
-        : true,
+        : false,
     liquidMotionEnabled: json['liquidMotionEnabled'] is bool
         ? json['liquidMotionEnabled']! as bool
         : true,

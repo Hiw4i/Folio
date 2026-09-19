@@ -7,7 +7,12 @@ import 'package:folio/shared/glass/surface/liquid_surface.dart';
 import 'package:folio/shared/glass/widgets/adaptive_glass_foreground.dart';
 import 'package:folio/shared/glass/widgets/liquid_morphing_control.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
+import 'package:folio/shared/settings/folio_settings.dart';
+import 'package:folio/shared/settings/folio_settings_controller.dart';
+import 'package:folio/shared/settings/folio_settings_scope.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
+
+import '../../support/memory_settings_store.dart';
 
 Widget _host(Widget child) => MediaQuery(
   data: const MediaQueryData(),
@@ -155,19 +160,27 @@ void main() {
   testWidgets('menu text keeps the backdrop path while opening and closing', (
     tester,
   ) async {
+    final controller = FolioSettingsController(
+      store: MemorySettingsStore(const FolioSettings(blurEnabled: true)),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
     await tester.pumpWidget(
-      _host(
-        LiquidMorphingControl(
-          geometryBuilder: (_) => const LiquidMorphGeometry(
-            collapsedRect: Rect.fromLTWH(300, 20, 48, 48),
-            expandedRect: Rect.fromLTWH(140, 20, 208, 116),
-          ),
-          collapsedSemanticsLabel: 'Open menu',
-          collapsedChild: const Center(
-            child: AdaptiveGlassIcon(LucideIcons.moreVertical),
-          ),
-          expandedChild: const Center(
-            child: AdaptiveGlassText('Copy', style: TextStyle(fontSize: 16)),
+      FolioSettingsScope(
+        controller: controller,
+        child: _host(
+          LiquidMorphingControl(
+            geometryBuilder: (_) => const LiquidMorphGeometry(
+              collapsedRect: Rect.fromLTWH(300, 20, 48, 48),
+              expandedRect: Rect.fromLTWH(140, 20, 208, 116),
+            ),
+            collapsedSemanticsLabel: 'Open menu',
+            collapsedChild: const Center(
+              child: AdaptiveGlassIcon(LucideIcons.moreVertical),
+            ),
+            expandedChild: const Center(
+              child: AdaptiveGlassText('Copy', style: TextStyle(fontSize: 16)),
+            ),
           ),
         ),
       ),

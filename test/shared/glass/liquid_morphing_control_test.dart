@@ -2,6 +2,11 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/shared/glass/widgets/liquid_morphing_control.dart';
 import 'package:folio/shared/glass/widgets/adaptive_glass_effects.dart';
+import 'package:folio/shared/settings/folio_settings.dart';
+import 'package:folio/shared/settings/folio_settings_controller.dart';
+import 'package:folio/shared/settings/folio_settings_scope.dart';
+
+import '../../support/memory_settings_store.dart';
 
 void main() {
   Widget buildHarness({required ValueChanged<int> onBackgroundDrag}) {
@@ -59,7 +64,17 @@ void main() {
   testWidgets('menu content receives velocity blur during its spring morph', (
     tester,
   ) async {
-    await tester.pumpWidget(buildHarness(onBackgroundDrag: (_) {}));
+    final controller = FolioSettingsController(
+      store: MemorySettingsStore(const FolioSettings(blurEnabled: true)),
+    );
+    await controller.load();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      FolioSettingsScope(
+        controller: controller,
+        child: buildHarness(onBackgroundDrag: (_) {}),
+      ),
+    );
     await tester.tapAt(
       tester.getCenter(find.byKey(const ValueKey<String>('morph_hit'))),
     );

@@ -32,18 +32,18 @@ void main() {
     final navigation = find.byKey(
       const ValueKey<String>('settings_show_navigation_on_scroll_up'),
     );
-    expect(tester.widget<Switch>(blur).value, isTrue);
+    expect(tester.widget<Switch>(blur).value, isFalse);
     expect(tester.widget<Switch>(motion).value, isTrue);
     expect(tester.widget<Switch>(navigation).value, isTrue);
     await tester.tap(blur);
     await tester.pumpAndSettle();
-    expect(tester.widget<Switch>(blur).value, isFalse);
+    expect(tester.widget<Switch>(blur).value, isTrue);
     expect(tester.widget<Switch>(motion).value, isTrue);
-    expect(store.value.blurEnabled, isFalse);
+    expect(store.value.blurEnabled, isTrue);
     expect(
       tester
           .widgetList<BackdropFilter>(find.byType(BackdropFilter))
-          .every((filter) => !filter.enabled),
+          .every((filter) => filter.enabled),
       isTrue,
     );
     await tester.tap(motion);
@@ -53,14 +53,14 @@ void main() {
     await tester.tap(navigation);
     await tester.pumpAndSettle();
     expect(store.value.showNavigationOnScrollUp, isFalse);
-    expect(store.value.blurEnabled, isFalse);
+    expect(store.value.blurEnabled, isTrue);
     expect(store.value.liquidMotionEnabled, isFalse);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(FolioSettingsSheet), findsNothing);
     await tester.tap(button);
     await tester.pumpAndSettle();
-    expect(tester.widget<Switch>(blur).value, isFalse);
+    expect(tester.widget<Switch>(blur).value, isTrue);
     expect(tester.widget<Switch>(motion).value, isFalse);
     expect(tester.widget<Switch>(navigation).value, isFalse);
     expect(tester.takeException(), isNull);
@@ -128,6 +128,8 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    controller.setBlurEnabled(true);
     await tester.pumpAndSettle();
     controller.setBlurEnabled(false);
     await tester.pumpAndSettle();

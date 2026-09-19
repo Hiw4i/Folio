@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../../../shared/glass/surface/glass_panel.dart';
 import '../../../shared/settings/folio_settings_controller.dart';
@@ -60,59 +61,66 @@ class FolioSettingsSheet extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const Text(
-                      'Settings',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                        color: FolioColors.textPrimary,
-                        decoration: TextDecoration.none,
+                    const Center(
+                      child: Text(
+                        'SETTINGS',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: FolioColors.textPrimary,
+                          decoration: TextDecoration.none,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 18),
-                    _SettingsSwitch(
-                      switchKey: const ValueKey<String>('settings_blur'),
-                      title: 'Blur',
-                      description: 'Frosted glass backgrounds',
-                      value: controller.settings.blurEnabled,
-                      onChanged: controller.setBlurEnabled,
+                    const _SettingsSectionHeader(
+                      icon: LucideIcons.gauge,
+                      title: 'Performance',
                     ),
-                    const SizedBox(height: 8),
-                    _SettingsSwitch(
-                      switchKey: const ValueKey<String>(
-                        'settings_liquid_motion',
-                      ),
-                      title: 'Liquid motion',
-                      description: 'Stretching and spring effects',
-                      value: controller.settings.liquidMotionEnabled,
-                      onChanged: controller.setLiquidMotionEnabled,
+                    const SizedBox(height: 10),
+                    _SettingsCard(
+                      children: <Widget>[
+                        _SettingsSwitch(
+                          switchKey: const ValueKey<String>('settings_blur'),
+                          title: 'Blur',
+                          description: 'Frosted glass backgrounds',
+                          value: controller.settings.blurEnabled,
+                          onChanged: controller.setBlurEnabled,
+                        ),
+                        const _SettingsDivider(),
+                        _SettingsSwitch(
+                          switchKey: const ValueKey<String>(
+                            'settings_liquid_motion',
+                          ),
+                          title: 'Liquid motion',
+                          description: 'Stretching and spring effects',
+                          value: controller.settings.liquidMotionEnabled,
+                          onChanged: controller.setLiquidMotionEnabled,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Turn off effects to reduce graphics load.',
-                      style: FolioText.metadata,
+                    const SizedBox(height: 22),
+                    const _SettingsSectionHeader(
+                      icon: LucideIcons.bookOpen,
+                      title: 'Reading',
                     ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Reading',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: FolioColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _SettingsSwitch(
-                      switchKey: const ValueKey<String>(
-                        'settings_show_navigation_on_scroll_up',
-                      ),
-                      title: 'Navigation follows scroll',
-                      description: 'Hide on scroll down, reveal on scroll up. '
-                          'Taps always toggle them.',
-                      value: controller.settings.showNavigationOnScrollUp,
-                      onChanged: controller.setShowNavigationOnScrollUp,
+                    const SizedBox(height: 10),
+                    _SettingsCard(
+                      children: <Widget>[
+                        _SettingsSwitch(
+                          switchKey: const ValueKey<String>(
+                            'settings_show_navigation_on_scroll_up',
+                          ),
+                          title: 'Navigation follows scroll',
+                          description:
+                              'Hide on scroll down, reveal on scroll up. '
+                              'Taps always toggle them.',
+                          value: controller.settings.showNavigationOnScrollUp,
+                          onChanged: controller.setShowNavigationOnScrollUp,
+                        ),
+                      ],
                     ),
                     if (controller.hasSaveError) ...<Widget>[
                       const SizedBox(height: 12),
@@ -136,6 +144,83 @@ class FolioSettingsSheet extends StatelessWidget {
   }
 }
 
+class _SettingsSectionHeader extends StatelessWidget {
+  const _SettingsSectionHeader({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: const Color(0x14FFFFFF),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: FolioColors.separator, width: 0.8),
+            ),
+            child: Icon(icon, size: 15, color: FolioColors.textPrimary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: FolioColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsCard extends StatelessWidget {
+  const _SettingsCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0x0DFFFFFF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: FolioColors.separator, width: 0.8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsDivider extends StatelessWidget {
+  const _SettingsDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 0.8,
+      width: double.infinity,
+      child: ColoredBox(color: FolioColors.separator),
+    );
+  }
+}
+
 class _SettingsSwitch extends StatelessWidget {
   const _SettingsSwitch({
     required this.switchKey,
@@ -153,30 +238,33 @@ class _SettingsSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(title, style: FolioText.body),
-              const SizedBox(height: 3),
-              Text(description, style: FolioText.metadata),
-            ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(title, style: FolioText.body),
+                const SizedBox(height: 3),
+                Text(description, style: FolioText.metadata),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 16),
-        Semantics(
-          label: title,
-          child: Switch.adaptive(
-            key: switchKey,
-            value: value,
-            onChanged: onChanged,
-            activeTrackColor: const Color(0xFFD0D0CD),
-            activeThumbColor: const Color(0xFF202123),
+          const SizedBox(width: 16),
+          Semantics(
+            label: title,
+            child: Switch.adaptive(
+              key: switchKey,
+              value: value,
+              onChanged: onChanged,
+              activeTrackColor: const Color(0xFFD0D0CD),
+              activeThumbColor: const Color(0xFF202123),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
