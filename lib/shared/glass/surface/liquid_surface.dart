@@ -152,11 +152,13 @@ class LiquidCase extends StatelessWidget {
                     color: const Color(0x42FFFFFF),
                     width: 0.8,
                   ),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[Color(0x1FFFFFFF), Color(0x08FFFFFF)],
-                  ),
+                  gradient: blurEnabled
+                      ? const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[Color(0x1FFFFFFF), Color(0x08FFFFFF)],
+                        )
+                      : null,
                 ),
                 child: Padding(padding: padding, child: child),
               ),

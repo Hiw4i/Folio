@@ -445,6 +445,5 @@ void _expectBackdrop(
   expect(filter.enabled, blurEnabled && t > 0);
   final sigma = blurEnabled && t > 0 && t < 1 ? 12 * t : 12.0;
   expect(filter.filter, ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma));
-  final expectedAlpha = blurEnabled ? 0.3 * t : t;
-  expect((filter.child! as ColoredBox).color.a, closeTo(expectedAlpha, 0.00001));
+  expect((filter.child! as ColoredBox).color.a, closeTo(0.3 * t, 0.00001));
 }

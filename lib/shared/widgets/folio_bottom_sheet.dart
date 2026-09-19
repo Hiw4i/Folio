@@ -82,7 +82,7 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
                 ? ui.ImageFilter.blur(sigmaX: 12 * t, sigmaY: 12 * t)
                 : _fullBlur,
             child: ColoredBox(
-              color: Colors.black.withValues(alpha: blurEnabled ? 0.3 * t : t),
+              color: Colors.black.withValues(alpha: 0.3 * t),
               child: child,
             ),
           ),

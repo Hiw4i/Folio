@@ -850,7 +850,7 @@ class _OutlinedText extends StatelessWidget {
       textScaler: textScaler,
       style: style.copyWith(
         color: const Color(0xFFFFFFFF),
-        shadows: kAdaptiveOutlineShadows,
+        shadows: const <Shadow>[],
       ),
     );
   }
