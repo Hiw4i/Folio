@@ -16,6 +16,7 @@ class IncomingDocument {
     required this.displayName,
     required this.sizeBytes,
     required this.modifiedAt,
+    this.createdAt,
     required this.mimeType,
     required this.persistedPermission,
   });
@@ -25,19 +26,28 @@ class IncomingDocument {
   final String displayName;
   final int sizeBytes;
   final DateTime modifiedAt;
+  final DateTime? createdAt;
   final String? mimeType;
   final bool persistedPermission;
 
+  /// Creation time when provided by the platform, else [modifiedAt].
+  DateTime get effectiveCreatedAt => createdAt ?? modifiedAt;
+
   factory IncomingDocument.fromMap(Map<Object?, Object?> map) {
     final modifiedMillis = map['modifiedAtMillis'];
+    final createdMillis = map['createdAtMillis'];
+    final modifiedAt = modifiedMillis is num
+        ? DateTime.fromMillisecondsSinceEpoch(modifiedMillis.toInt())
+        : DateTime.now();
     return IncomingDocument(
       sourceType: map['sourceType'] as String? ?? 'uri',
       value: map['value'] as String? ?? '',
       displayName: map['displayName'] as String? ?? 'Untitled',
       sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
-      modifiedAt: modifiedMillis is num
-          ? DateTime.fromMillisecondsSinceEpoch(modifiedMillis.toInt())
-          : DateTime.now(),
+      modifiedAt: modifiedAt,
+      createdAt: createdMillis is num
+          ? DateTime.fromMillisecondsSinceEpoch(createdMillis.toInt())
+          : null,
       mimeType: map['mimeType'] as String?,
       persistedPermission: map['persistedPermission'] as bool? ?? false,
     );

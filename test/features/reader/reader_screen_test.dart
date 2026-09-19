@@ -10,9 +10,11 @@ import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
+import 'package:folio/features/reader/widgets/file_info_sheet.dart';
 import 'package:folio/shared/glass/widgets/liquid_glass_control.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 import 'package:folio/shared/theme/folio_theme.dart';
+import 'package:folio/shared/widgets/folio_sheet_content.dart';
 
 void main() {
   const path = '/documents/notes.txt';
@@ -277,9 +279,125 @@ void main() {
     await tester.tap(find.text('File info'));
     await tester.pumpAndSettle();
 
-    expect(find.text('File info'), findsOneWidget);
+    expect(find.byType(FileInfoSheet), findsOneWidget);
+    expect(find.byType(FolioSheetContent), findsOneWidget);
+    expect(find.text('FILE INFO'), findsOneWidget);
     expect(find.text('TXT'), findsOneWidget);
     expect(find.text('120 B'), findsOneWidget);
+  });
+
+  testWidgets('File info closes before the reader and can be reopened', (
+    tester,
+  ) async {
+    await openReader(tester);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await _openFileInfo(tester);
+      await tester.pumpAndSettle();
+      expect(find.byType(FileInfoSheet), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(FileInfoSheet), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('reader_surface')),
+        findsOneWidget,
+      );
+      expect(find.text('Remove from Recents'), findsNothing);
+    }
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('reader_surface')), findsNothing);
+    expect(find.text('Folio'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rapid File info actions and Back cannot stack or pop the reader', (
+    tester,
+  ) async {
+    await openReader(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('reader_menu_button')));
+    await tester.pumpAndSettle();
+    final action = tester.widget<GestureDetector>(
+      find.ancestor(
+        of: find.text('File info'),
+        matching: find.byType(GestureDetector),
+      ).first,
+    ).onTap!;
+    action();
+    action(); // Before the first opening frame.
+    await tester.pumpAndSettle();
+    expect(find.byType(FileInfoSheet), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    action(); // The closing animation must still hold the modal guard.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(FileInfoSheet), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('folio_sheet_backdrop')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey<String>('reader_surface')), findsOneWidget);
+
+    await _openFileInfo(tester);
+    await tester.pumpAndSettle();
+    expect(find.byType(FileInfoSheet), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('File info releases search focus without losing the query', (
+    tester,
+  ) async {
+    await openReader(tester);
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const ValueKey<String>('search_button_hit'))),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('search_editable')),
+      'quiet',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await _waitForText(tester, '1 of 1');
+    final search = tester.state<LiquidSearchControlState>(
+      find.byType(LiquidSearchControl),
+    );
+    await _openFileInfo(tester);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, isNot('Search field'));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+      tester.state<LiquidSearchControlState>(find.byType(LiquidSearchControl)),
+      same(search),
+    );
+    expect(
+      tester.widget<EditableText>(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('search_editable')),
+          matching: find.byType(EditableText),
+        ),
+      ).controller.text,
+      'quiet',
+    );
+    expect(find.text('1 of 1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('disposing the reader during File info opening is safe', (
+    tester,
+  ) async {
+    await openReader(tester);
+    await _openFileInfo(tester);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 90));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('reader menu morph closes after an outside tap', (tester) async {
@@ -464,6 +582,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 of 1'), findsOneWidget);
   });
+}
+
+Future<void> _openFileInfo(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey<String>('reader_menu_button')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('File info'));
 }
 
 Future<void> _waitForReaderContent(WidgetTester tester) async {

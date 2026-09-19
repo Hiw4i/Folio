@@ -22,6 +22,8 @@ import java.io.FileNotFoundException
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -411,12 +413,14 @@ class MainActivity : FlutterActivity() {
         if (uri.scheme == "file") {
             val path = uri.path ?: return null
             val file = File(path)
+            val modifiedAt = file.lastModified()
             return mapOf(
                 "sourceType" to "file",
                 "value" to file.absolutePath,
                 "displayName" to file.name,
                 "sizeBytes" to file.length(),
-                "modifiedAtMillis" to file.lastModified(),
+                "modifiedAtMillis" to modifiedAt,
+                "createdAtMillis" to fileCreationMillis(file, modifiedAt),
                 "mimeType" to contentResolver.getType(uri),
                 "persistedPermission" to false,
             )
@@ -451,6 +455,15 @@ class MainActivity : FlutterActivity() {
             "mimeType" to contentResolver.getType(uri),
             "persistedPermission" to persisted,
         )
+    }
+
+    private fun fileCreationMillis(file: File, fallback: Long): Long {
+        return runCatching {
+            Files.readAttributes(
+                file.toPath(),
+                BasicFileAttributes::class.java,
+            ).creationTime().toMillis()
+        }.getOrNull() ?: fallback
     }
 
     private sealed interface PdfSourceSession {

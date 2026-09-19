@@ -12,6 +12,14 @@ extension DocumentFormatPresentation on DocumentFormat {
     DocumentFormat.markdown => 'md',
   };
 
+  String? get iconPath => switch (this) {
+    DocumentFormat.pdf => 'assets/icons/pdf.svg',
+    DocumentFormat.docx => 'assets/icons/docx.svg',
+    DocumentFormat.txt => 'assets/icons/txt.svg',
+    DocumentFormat.pptx => null,
+    DocumentFormat.markdown => null,
+  };
+
   IconData get icon => switch (this) {
     DocumentFormat.pdf => LucideIcons.fileText,
     DocumentFormat.docx => LucideIcons.fileText,
@@ -83,6 +91,7 @@ class DocumentEntry {
     required this.format,
     required this.sizeBytes,
     required this.modifiedAt,
+    this.createdAt,
     this.lastOpenedAt,
     this.isAvailable = true,
   });
@@ -93,8 +102,13 @@ class DocumentEntry {
   final DocumentFormat format;
   final int sizeBytes;
   final DateTime modifiedAt;
+  final DateTime? createdAt;
   final DateTime? lastOpenedAt;
   final bool isAvailable;
+
+  /// Creation time when known, otherwise the last modification time.
+  /// Older cached entries may not have [createdAt] yet.
+  DateTime get effectiveCreatedAt => createdAt ?? modifiedAt;
 
   static const Object _notProvided = Object();
 
@@ -105,6 +119,7 @@ class DocumentEntry {
     DocumentFormat? format,
     int? sizeBytes,
     DateTime? modifiedAt,
+    Object? createdAt = _notProvided,
     Object? lastOpenedAt = _notProvided,
     bool? isAvailable,
   }) {
@@ -115,6 +130,9 @@ class DocumentEntry {
       format: format ?? this.format,
       sizeBytes: sizeBytes ?? this.sizeBytes,
       modifiedAt: modifiedAt ?? this.modifiedAt,
+      createdAt: identical(createdAt, _notProvided)
+          ? this.createdAt
+          : createdAt as DateTime?,
       lastOpenedAt: identical(lastOpenedAt, _notProvided)
           ? this.lastOpenedAt
           : lastOpenedAt as DateTime?,
@@ -132,6 +150,7 @@ class DocumentEntry {
     'format': format.name,
     'sizeBytes': sizeBytes,
     'modifiedAt': modifiedAt.toUtc().toIso8601String(),
+    'createdAt': createdAt?.toUtc().toIso8601String(),
     'lastOpenedAt': lastOpenedAt?.toUtc().toIso8601String(),
     'isAvailable': isAvailable,
   };
@@ -140,6 +159,7 @@ class DocumentEntry {
     final source = json['source'];
     final formatName = json['format'];
     final modifiedAt = json['modifiedAt'];
+    final createdAt = json['createdAt'];
     final lastOpenedAt = json['lastOpenedAt'];
     if (json['id'] is! String ||
         source is! Map ||
@@ -162,6 +182,7 @@ class DocumentEntry {
       format: format,
       sizeBytes: (json['sizeBytes']! as num).toInt(),
       modifiedAt: DateTime.parse(modifiedAt),
+      createdAt: createdAt is String ? DateTime.parse(createdAt) : null,
       lastOpenedAt: lastOpenedAt is String
           ? DateTime.parse(lastOpenedAt)
           : null,

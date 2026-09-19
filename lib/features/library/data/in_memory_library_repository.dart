@@ -16,13 +16,15 @@ class InMemoryLibraryRepository implements LibraryRepository {
       int? openedMinutesAgo,
     }) {
       final format = DocumentFormatPresentation.fromFileName(name)!;
+      final modifiedAt = now.subtract(Duration(days: modifiedDaysAgo));
       return DocumentEntry(
         id: name.toLowerCase(),
         source: FileDocumentSource('/storage/emulated/0/Documents/$name'),
         name: name,
         format: format,
         sizeBytes: size,
-        modifiedAt: now.subtract(Duration(days: modifiedDaysAgo)),
+        modifiedAt: modifiedAt,
+        createdAt: modifiedAt.subtract(const Duration(days: 30)),
         lastOpenedAt: openedMinutesAgo == null
             ? null
             : now.subtract(Duration(minutes: openedMinutesAgo)),

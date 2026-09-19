@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 import '../settings/folio_settings_scope.dart';
 
 /// A floating bottom sheet with the reference dialog's entrance and backdrop.
-/// The caller owns the surface and content; there is no fullscreen presentation.
+/// Pair with FolioSheetContent for the shared Settings-style surface and body.
+/// There is no fullscreen or centred-dialog presentation.
 abstract final class FolioBottomSheet {
   static const double cornerRadius = 32;
 
@@ -15,6 +16,8 @@ abstract final class FolioBottomSheet {
     required WidgetBuilder builder,
   }) async {
     if (!context.mounted) return null;
+
+    FocusManager.instance.primaryFocus?.unfocus();
 
     final route = _FolioBottomSheetRoute<T>(
       builder: builder,
@@ -74,6 +77,9 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
                 (animation!.value / _backdropRatio).clamp(0.0, 1.0),
               );
         final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
+        // Without blur the same 0.3 dim looks washed out, so compensate
+        // with a stronger scrim when blur is off.
+        final dimAlpha = (blurEnabled ? 0.3 : 0.6) * t;
         return ClipRect(
           child: BackdropFilter(
             key: const ValueKey<String>('folio_sheet_backdrop'),
@@ -82,7 +88,7 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
                 ? ui.ImageFilter.blur(sigmaX: 12 * t, sigmaY: 12 * t)
                 : _fullBlur,
             child: ColoredBox(
-              color: Colors.black.withValues(alpha: 0.3 * t),
+              color: Colors.black.withValues(alpha: dimAlpha),
               child: child,
             ),
           ),

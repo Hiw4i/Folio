@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_markdown_plus: 1.0.12
+  flutter_svg: ^2.0.10
   lucide_flutter: ^1.42.0
   markdown: 7.3.1
   path_provider: 2.1.6
@@ -26,6 +27,8 @@ flutter:
   uses-material-design: false
   shaders:
     - assets/shaders/adaptive_glass_foreground.frag
+  assets:
+    - assets/icons/
   fonts:
     - family: Inter
       fonts:

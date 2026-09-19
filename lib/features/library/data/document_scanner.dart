@@ -200,6 +200,9 @@ Future<void> _scanInIsolate(Map<String, Object?> arguments) async {
                 format: format,
                 sizeBytes: stat.size,
                 modifiedAt: stat.modified,
+                // dart:io has no birthtime. On Windows `changed` is the
+                // creation time; on POSIX it is ctime (best effort fallback).
+                createdAt: stat.changed,
               ).toJson(),
             );
             if (pending.length >= batchSize) {

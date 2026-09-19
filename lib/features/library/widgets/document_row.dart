@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../shared/theme/folio_theme.dart';
 import '../data/document_entry.dart';
@@ -120,11 +121,21 @@ class _FormatGlyph extends StatelessWidget {
         border: Border.all(color: const Color(0x1FFFFFFF), width: 0.8),
       ),
       alignment: Alignment.center,
-      child: Icon(
-        format.icon,
-        size: 24,
-        color: FolioColors.textPrimary.withValues(alpha: 0.88),
-      ),
+      child: format.iconPath != null
+          ? SvgPicture.asset(
+              format.iconPath!,
+              width: 24,
+              height: 24,
+              colorFilter: ColorFilter.mode(
+                FolioColors.textPrimary.withValues(alpha: 0.88),
+                BlendMode.srcIn,
+              ),
+            )
+          : Icon(
+              format.icon,
+              size: 24,
+              color: FolioColors.textPrimary.withValues(alpha: 0.88),
+            ),
     );
   }
 }

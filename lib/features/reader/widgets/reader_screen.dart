@@ -18,6 +18,7 @@ import '../pdf/widgets/pdf_document_view.dart';
 import '../powerpoint/widgets/powerpoint_document_view.dart';
 import '../text/widgets/text_document_view.dart';
 import '../word/widgets/word_document_view.dart';
+import 'file_info_sheet.dart';
 import 'reader_chrome.dart';
 import 'reader_loading_view.dart';
 
@@ -312,9 +313,27 @@ class _ReaderScreenState extends State<ReaderScreen>
     );
   }
 
+  Future<void> _openFileInfo() async {
+    if (!mounted || _infoOpen) {
+      return;
+    }
+    setState(() => _infoOpen = true);
+    _menuKey.currentState?.close();
+    _clearContentPointer();
+    _chromeScrollIntent = 0;
+    try {
+      await showFolioFileInfoSheet(context, document: widget.document);
+    } finally {
+      if (mounted) {
+        setState(() => _infoOpen = false);
+      }
+    }
+  }
+
   void _handleBackButton() {
+    // File info is a separate modal route. Keep the reader locked until its
+    // reverse transition and backdrop finish, including repeated Back taps.
     if (_infoOpen) {
-      setState(() => _infoOpen = false);
       return;
     }
     if (_menuOpen) {
@@ -508,12 +527,8 @@ class _ReaderScreenState extends State<ReaderScreen>
     return PopScope<void>(
       canPop: !_menuOpen && !_infoOpen,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && (_menuOpen || _infoOpen)) {
-          if (_infoOpen) {
-            setState(() => _infoOpen = false);
-          } else {
-            _menuKey.currentState?.close();
-          }
+        if (!didPop && !_infoOpen && _menuOpen) {
+          _menuKey.currentState?.close();
         }
       },
       child: ColoredBox(
@@ -653,10 +668,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                         },
                         collapsedChild: const Center(child: _MenuGlyph()),
                         expandedChild: _ReaderMenuContent(
-                          onFileInfo: () {
-                            _menuKey.currentState?.close();
-                            setState(() => _infoOpen = true);
-                          },
+                          onFileInfo: () => unawaited(_openFileInfo()),
                           onRemove: () {
                             _menuKey.currentState?.close();
                             unawaited(widget.onRemoveFromRecents());
@@ -713,11 +725,6 @@ class _ReaderScreenState extends State<ReaderScreen>
                 ],
               ),
             ),
-            if (_infoOpen)
-              _FileInfoOverlay(
-                document: widget.document,
-                onDismiss: () => setState(() => _infoOpen = false),
-              ),
           ],
         ),
       ),
@@ -1324,7 +1331,7 @@ class _ReaderMenuContent extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: SizedBox(
-              height: 0.8,
+              height: 1,
               child: AdaptiveGlassDecoration(
                 child: ColoredBox(color: FolioColors.separator),
               ),
@@ -1369,118 +1376,6 @@ class _MenuAction extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _FileInfoOverlay extends StatelessWidget {
-  const _FileInfoOverlay({required this.document, required this.onDismiss});
-
-  final DocumentEntry document;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned.fill(
-      child: Semantics(
-        scopesRoute: true,
-        namesRoute: true,
-        explicitChildNodes: true,
-        label: 'File info',
-        child: Stack(
-          children: <Widget>[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onDismiss,
-                child: const ColoredBox(color: Color(0xA6000000)),
-              ),
-            ),
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 380),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: GlassPanel(
-                    borderRadius: 28,
-                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 12),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text(
-                          'File info',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            color: FolioColors.textPrimary,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _InfoRow(label: 'Name', value: document.name),
-                        _InfoRow(
-                          label: 'Format',
-                          value: document.format.extension.toUpperCase(),
-                        ),
-                        _InfoRow(
-                          label: 'Size',
-                          value: _formatFileSize(document.sizeBytes),
-                        ),
-                        _InfoRow(
-                          label: 'Modified',
-                          value: _formatDate(document.modifiedAt),
-                        ),
-                        Align(
-                          alignment: Alignment.center,
-                          child: LiquidGlassButton(
-                            label: 'Done',
-                            width: 108,
-                            height: 48,
-                            onTap: onDismiss,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(width: 78, child: Text(label, style: FolioText.metadata)),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                color: FolioColors.textPrimary,
-                fontSize: 12.5,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1573,33 +1468,4 @@ class _ReaderBackground extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatFileSize(int bytes) {
-  if (bytes < 1024) {
-    return '$bytes B';
-  }
-  if (bytes < 1024 * 1024) {
-    return '${(bytes / 1024).toStringAsFixed(bytes < 10240 ? 1 : 0)} KB';
-  }
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-}
-
-String _formatDate(DateTime date) {
-  const months = <String>[
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  final local = date.toLocal();
-  return '${months[local.month - 1]} ${local.day}, ${local.year}';
 }

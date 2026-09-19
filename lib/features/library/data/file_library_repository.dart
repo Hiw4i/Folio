@@ -100,6 +100,7 @@ class FileLibraryRepository implements LibraryRepository {
         scannedIds.add(scanned.id);
         final previous = _documents[scanned.id];
         _documents[scanned.id] = scanned.copyWith(
+          createdAt: previous?.createdAt ?? scanned.createdAt,
           lastOpenedAt: previous?.lastOpenedAt,
           isAvailable: true,
         );
@@ -220,6 +221,7 @@ class FileLibraryRepository implements LibraryRepository {
     }
     final previous = _documents[document.id];
     final registered = document.copyWith(
+      createdAt: previous?.createdAt ?? document.createdAt,
       lastOpenedAt: _now(),
       isAvailable: true,
     );
@@ -247,6 +249,7 @@ class FileLibraryRepository implements LibraryRepository {
       format: format,
       sizeBytes: incoming.sizeBytes < 0 ? 0 : incoming.sizeBytes,
       modifiedAt: incoming.modifiedAt,
+      createdAt: incoming.createdAt,
     );
   }
 
