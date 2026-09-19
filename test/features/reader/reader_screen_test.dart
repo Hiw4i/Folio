@@ -440,7 +440,7 @@ void main() {
     expect(find.byType(Image), findsNothing);
     expect(
       tester.widget<MarkdownBody>(find.byType(MarkdownBody)).selectable,
-      isTrue,
+      isFalse, // Selection is owned by the one surrounding document area.
     );
 
     tester

@@ -24,6 +24,16 @@
     resizeFrame: 0,
   };
 
+  const motion = window.FolioReaderMotion.create({
+    viewport, content: documentRoot, horizontal: format === 'pptx',
+    canStart: () => state.ready && !state.disposed,
+    cancelTap: () => { if (state.pointer) state.pointer.moved = true; },
+  });
+  const selection = window.FolioReaderSelection.create({
+    viewport, content: documentRoot, post, cancelMotion: () => motion.reset(),
+  });
+  window.FolioSelection = selection;
+
   const ownedUrls = new Set();
   const createObjectURL = URL.createObjectURL.bind(URL);
   const revokeObjectURL = URL.revokeObjectURL.bind(URL);
@@ -91,7 +101,8 @@
       }
       // Horizontal slide navigation never expresses intent to hide chrome.
       // Keep position updates, but avoid a bridge message on every swipe frame.
-      if (format === 'docx' && Math.abs(delta) > 0.5) post('scroll', { delta });
+      if (format === 'docx' && !selection.isActive() && !motion.isAnimating
+          && Math.abs(delta) > 0.5) post('scroll', { delta });
       publishPosition(false);
     });
   }
@@ -245,6 +256,8 @@
   }
 
   function search(query) {
+    motion.reset();
+    selection.clear(); // Search replaces text nodes; old DOM ranges would be stale.
     const revision = ++state.searchRevision;
     clearSearch();
     const normalized = String(query || '').trim();
@@ -283,6 +296,7 @@
   }
 
   function revealActiveHit(smooth = true) {
+    motion.reset();
     state.hits.forEach((hit, index) => {
       hit.dataset.folioSearch = index === state.activeHit ? 'active' : 'match';
     });
@@ -309,6 +323,7 @@
   }
 
   function goToPosition(index, smooth = true) {
+    motion.reset();
     const pages = pageElements();
     const target = pages[Math.max(0, Math.min(Math.trunc(Number(index) || 0), pages.length - 1))];
     if (!target) return;
@@ -392,6 +407,7 @@
   }, { passive: true });
   window.addEventListener('resize', () => {
     if (state.resizeFrame || !state.ready || state.disposed) return;
+    motion.reset();
     const position = state.position;
     if (state.pointer) state.pointer.moved = true;
     state.resizeFrame = requestAnimationFrame(() => {
@@ -420,6 +436,7 @@
   });
   window.addEventListener('pagehide', () => {
     state.disposed = true;
+    motion.dispose(); selection.dispose();
     state.pointer = null; activePointers.clear();
     cancelAnimationFrame(state.scrollFrame); cancelAnimationFrame(state.resizeFrame);
     state.searchRevision++;

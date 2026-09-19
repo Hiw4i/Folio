@@ -5,7 +5,10 @@ import 'package:flutter/material.dart'
         ContextMenuButtonItem,
         ContextMenuButtonType,
         DefaultMaterialLocalizations,
-        TextSelectionToolbarAnchors;
+        TextSelectionToolbarAnchors,
+        TextSelectionThemeData,
+        Theme,
+        materialTextSelectionHandleControls;
 import 'package:flutter/widgets.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -37,6 +40,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   final PdfViewerController _controller = PdfViewerController();
   late final PdfViewerParams _params;
   bool _selectingText = false;
+  bool _selectionActionRunning = false;
+  int _selectionRevision = 0;
 
   @override
   void initState() {
@@ -62,6 +67,31 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         enableSelectionHandles: true,
         showContextMenuAutomatically: true,
         onTextSelectionChange: _textSelectionChanged,
+        // Use the same Material handle geometry as SelectionArea in MD/TXT.
+        buildSelectionHandle: (context, anchor, state) {
+          final leading = anchor.type == PdfTextSelectionAnchorType.a;
+          final rtl = anchor.direction == PdfTextDirection.rtl ||
+              anchor.direction == PdfTextDirection.vrtl;
+          return materialTextSelectionHandleControls.buildHandle(
+            context,
+            leading != rtl
+                ? TextSelectionHandleType.left
+                : TextSelectionHandleType.right,
+            22,
+          );
+        },
+        calcSelectionHandleOffset: (context, anchor, state) {
+          if (anchor.type != PdfTextSelectionAnchorType.a) return Offset.zero;
+          // pdfrx anchors the leading handle above the line. Material handles
+          // have their tip at the top, so place it below the actual scaled line.
+          final rect = _controller.textSelectionDelegate.doc2local
+              .rectToLocal(context, anchor.rect);
+          return Offset(0, (rect?.height ?? 22) + 22);
+        },
+        magnifier: const PdfViewerSelectionMagnifierParams(
+          // Avoid repeatedly evicting the magnifier's current page image.
+          maxImageBytesCachedOnMemory: 8 * 1024 * 1024,
+        ),
       ),
       buildContextMenu: _buildContextMenu,
       scrollPhysics: const BouncingScrollPhysics(
@@ -114,6 +144,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
 
   void _textSelectionChanged(PdfTextSelection selection) {
     _selectingText = selection.hasSelectedText;
+    _selectionRevision++;
   }
 
   Widget? _buildContextMenu(
@@ -125,13 +156,21 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
           params.textSelectionDelegate.isCopyAllowed &&
           params.textSelectionDelegate.hasSelectedText)
         ContextMenuButtonItem(
-          onPressed: params.textSelectionDelegate.copyTextSelection,
+          onPressed: () => unawaited(_selectionAction(() async {
+            final revision = _selectionRevision;
+            final copied = await params.textSelectionDelegate.copyTextSelection();
+            if (copied && mounted && revision == _selectionRevision) {
+              await params.textSelectionDelegate.clearTextSelection();
+            }
+          })),
           type: ContextMenuButtonType.copy,
         ),
       if (params.isTextSelectionEnabled &&
           !params.textSelectionDelegate.isSelectingAllText)
         ContextMenuButtonItem(
-          onPressed: params.textSelectionDelegate.selectAllText,
+          onPressed: () => unawaited(
+            _selectionAction(params.textSelectionDelegate.selectAllText),
+          ),
           type: ContextMenuButtonType.selectAll,
         ),
     ];
@@ -145,6 +184,19 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     );
   }
 
+  Future<void> _selectionAction(Future<void> Function() action) async {
+    if (_selectionActionRunning || !mounted) return;
+    _selectionActionRunning = true;
+    try {
+      await action();
+    } catch (error) {
+      // Keep the selection available when the OS clipboard or document fails.
+      debugPrint('Folio PDF selection action failed: $error');
+    } finally {
+      _selectionActionRunning = false;
+    }
+  }
+
   bool _generalTap(
     BuildContext context,
     PdfViewerController controller,
@@ -152,7 +204,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   ) {
     switch (details.type) {
       case PdfViewerGeneralTapType.tap:
-        widget.onContentTap();
+        if (!_selectingText) widget.onContentTap();
         return false;
       case PdfViewerGeneralTapType.doubleTap:
         unawaited(controller.zoomUp(loop: true));
@@ -171,20 +223,47 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     }
     return RepaintBoundary(
       key: const ValueKey<String>('pdf_document_view'),
-      child: PdfViewer(documentRef, controller: _controller, params: _params),
+      // pdfrx resolves highlight colours from Material Theme, not solely from
+      // the app's TextSelectionTheme (the app itself uses WidgetsApp).
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          textSelectionTheme: const TextSelectionThemeData(
+            selectionColor: FolioColors.selection,
+            selectionHandleColor: FolioColors.selectionHandle,
+            cursorColor: FolioColors.cursor,
+          ),
+        ),
+        child: PdfViewer(documentRef, controller: _controller, params: _params),
+      ),
     );
   }
 }
 
-/// Keeps the PDF selection overlay self-contained. pdfrx builds this widget
-/// inside the viewer overlay, which is not guaranteed to retain the app-level
-/// Material localizations on every Android composition path.
-class PdfSelectionContextMenu extends StatelessWidget {
-  const PdfSelectionContextMenu({
-    required this.primaryAnchor,
-    required this.buttonItems,
-    this.secondaryAnchor,
+/// This widget MUST itself be an Align. pdfrx recognises Align/Positioned as
+/// self-positioned menus; wrapping it in a StatelessWidget would make pdfrx add
+/// a second Positioned + size observer around our already-positioned toolbar.
+/// That feedback loop can continuously rebuild the overlay on text selection.
+class PdfSelectionContextMenu extends Align {
+  PdfSelectionContextMenu({
+    required Offset primaryAnchor,
+    required List<ContextMenuButtonItem> buttonItems,
+    Offset? secondaryAnchor,
     super.key,
+  }) : super(
+         alignment: Alignment.topLeft,
+         child: _PdfSelectionMenuContents(
+           primaryAnchor: primaryAnchor,
+           secondaryAnchor: secondaryAnchor,
+           buttonItems: buttonItems,
+         ),
+       );
+}
+
+class _PdfSelectionMenuContents extends StatelessWidget {
+  const _PdfSelectionMenuContents({
+    required this.primaryAnchor,
+    required this.secondaryAnchor,
+    required this.buttonItems,
   });
 
   final Offset primaryAnchor;
@@ -199,15 +278,12 @@ class PdfSelectionContextMenu extends StatelessWidget {
       delegates: const <LocalizationsDelegate<dynamic>>[
         DefaultMaterialLocalizations.delegate,
       ],
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: FolioSelectionToolbar(
-          anchors: TextSelectionToolbarAnchors(
-            primaryAnchor: primaryAnchor,
-            secondaryAnchor: secondaryAnchor,
-          ),
-          buttonItems: buttonItems,
+      child: FolioSelectionToolbar(
+        anchors: TextSelectionToolbarAnchors(
+          primaryAnchor: primaryAnchor,
+          secondaryAnchor: secondaryAnchor,
         ),
+        buttonItems: buttonItems,
       ),
     );
   }

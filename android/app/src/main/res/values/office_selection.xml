@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Scoped to the document WebView, never the Activity/window theme.
+         Keep these colours in sync with shared/theme/folio_theme.dart. -->
+    <style name="FolioOfficeSelectionTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#C9D1DC</item>
+        <item name="android:textColorHighlight">#665F6B7C</item>
+        <item name="android:textSelectHandleLeft">@drawable/folio_selection_handle_left</item>
+        <item name="android:textSelectHandleRight">@drawable/folio_selection_handle_right</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

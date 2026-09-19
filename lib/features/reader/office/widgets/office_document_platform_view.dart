@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../data/office_document_gateway.dart';
 import '../logic/office_document_renderer_base.dart';
+import 'office_selection_overlay.dart';
 
 class OfficeDocumentPlatformView extends StatefulWidget {
   const OfficeDocumentPlatformView({
@@ -30,6 +31,8 @@ class _OfficeDocumentPlatformViewState
   _MethodChannelOfficeView? _controller;
   OfficeDocumentRendererBase? _attachedRenderer;
   String? _attachedSessionId;
+  OfficeSelectionSnapshot _selection = OfficeSelectionSnapshot.empty;
+  bool _selectionCommandRunning = false;
 
   @override
   void didUpdateWidget(OfficeDocumentPlatformView oldWidget) {
@@ -85,13 +88,37 @@ class _OfficeDocumentPlatformViewState
     }
     renderer.handleViewEvent(event);
     switch (event['type']) {
+      case 'selection':
+        final next = OfficeSelectionSnapshot.fromEvent(event);
+        if (next != _selection) {
+          setState(() => _selection = next);
+        }
       case 'tap':
-        widget.onContentTap();
+        if (!_selection.active) {
+          widget.onContentTap();
+        }
       case 'scroll':
         final rawDelta = event['delta'];
-        if (rawDelta is num && rawDelta.isFinite && rawDelta != 0) {
+        if (!_selection.active &&
+            rawDelta is num &&
+            rawDelta.isFinite &&
+            rawDelta != 0) {
           widget.onReadingGesture?.call(rawDelta.toDouble());
         }
+    }
+  }
+
+  Future<void> _selectionCommand(String command) async {
+    final controller = _controller;
+    if (controller == null || _selectionCommandRunning) return;
+    _selectionCommandRunning = true;
+    try {
+      await controller.selectionCommand(command);
+    } catch (error) {
+      // Preserve the selection on clipboard/channel failure, so Copy can retry.
+      debugPrint('Folio Office selection command failed: $error');
+    } finally {
+      if (identical(controller, _controller)) _selectionCommandRunning = false;
     }
   }
 
@@ -101,6 +128,8 @@ class _OfficeDocumentPlatformViewState
     _controller = null;
     _attachedRenderer = null;
     _attachedSessionId = null;
+    _selection = OfficeSelectionSnapshot.empty;
+    _selectionCommandRunning = false;
     if (controller != null) {
       // Detach from its actual owner, not the newly supplied widget.renderer.
       renderer?.detachView(controller);
@@ -123,14 +152,25 @@ class _OfficeDocumentPlatformViewState
     }
     return RepaintBoundary(
       key: ValueKey<String>('office_document_view_${session.id}'),
-      child: AndroidView(
-        viewType: 'folio/office_view',
-        layoutDirection: TextDirection.ltr,
-        creationParams: <String, Object?>{'sessionId': session.id},
-        creationParamsCodec: const StandardMessageCodec(),
-        hitTestBehavior: PlatformViewHitTestBehavior.opaque,
-        onPlatformViewCreated: (viewId) =>
-            _platformViewCreated(viewId, renderer, session.id),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          AndroidView(
+            viewType: 'folio/office_view',
+            layoutDirection: TextDirection.ltr,
+            creationParams: <String, Object?>{'sessionId': session.id},
+            creationParamsCodec: const StandardMessageCodec(),
+            hitTestBehavior: PlatformViewHitTestBehavior.opaque,
+            onPlatformViewCreated: (viewId) =>
+                _platformViewCreated(viewId, renderer, session.id),
+          ),
+          if (_selection.active && _selection.showMenu)
+            OfficeSelectionOverlay(
+              selection: _selection,
+              onCopy: () => unawaited(_selectionCommand('copySelection')),
+              onSelectAll: () => unawaited(_selectionCommand('selectAll')),
+            ),
+        ],
       ),
     );
   }
@@ -147,6 +187,8 @@ class _MethodChannelOfficeView implements OfficeViewCommands {
   bool _disposed = false;
 
   Future<void> start() => _invoke('start');
+
+  Future<void> selectionCommand(String command) => _invoke(command);
 
   @override
   Future<void> search(String query) =>

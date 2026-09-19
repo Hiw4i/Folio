@@ -2,7 +2,7 @@
   color-scheme: dark;
   --folio-bg: #0b0c0e;
   --folio-sheet: #f8f7f3;
-  --folio-yellow: #f2c94c;
+  --folio-selection: rgba(95, 107, 124, 0.4);
 }
 
 * {
@@ -141,13 +141,14 @@ body[data-format="pptx"] #all_slides_warpper {
 mark[data-folio-search] {
   padding: 0;
   color: inherit;
-  background: rgba(242, 201, 76, 0.34);
+  background: rgba(140, 152, 169, 0.24);
   border-radius: 2px;
 }
 
 mark[data-folio-search="active"] {
-  background: rgba(242, 201, 76, 0.92);
-  box-shadow: 0 0 0 2px rgba(242, 201, 76, 0.35);
+  color: #161a20;
+  background: #d7dee8;
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -175,3 +176,7 @@ body[data-format="docx"] .docx-wrapper > section.docx > footer { flex-shrink: 0;
 .folio-master-layer { z-index: 0; }
 .folio-slide-frame .folio-group, .folio-slide-frame .folio-picture { box-sizing: border-box; }
 .folio-slide-frame .text-block { white-space: pre-wrap; overflow-wrap: normal; }
+
+/* Same selection palette as FolioColors; preserve authored text colours. */
+#document ::selection { background: var(--folio-selection); }
+#document { -webkit-user-select: text; user-select: text; }

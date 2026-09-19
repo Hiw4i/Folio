@@ -1,6 +1,8 @@
 package com.example.folio
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
@@ -24,6 +26,7 @@ import io.flutter.plugin.common.StandardMessageCodec
 import io.flutter.plugin.platform.PlatformView
 import io.flutter.plugin.platform.PlatformViewFactory
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.io.ByteArrayInputStream
 
 internal class OfficePlatformViewFactory(
@@ -49,7 +52,7 @@ internal class OfficePlatformView(
     private val channel = MethodChannel(messenger, "folio/office_view/$viewId")
     private var disposed = false
     private var started = false
-    private val webView = WebView(context)
+    private val webView = OfficeSelectionWebView(context)
     private val assetLoader: WebViewAssetLoader
 
     init {
@@ -74,6 +77,7 @@ internal class OfficePlatformView(
         disposed = true
         channel.setMethodCallHandler(null)
         webView.apply {
+            finishSelectionMode()
             stopLoading()
             loadUrl("about:blank")
             clearHistory()
@@ -112,11 +116,44 @@ internal class OfficePlatformView(
                     evaluate("window.FolioOffice?.goToPosition($index);")
                     result.success(null)
                 }
+                "copySelection" -> copySelection(result)
+                "selectAll" -> {
+                    evaluate("window.FolioSelection?.selectAll();")
+                    result.success(null)
+                }
+                "clearSelection" -> {
+                    evaluate("window.FolioSelection?.clear();")
+                    webView.finishSelectionMode()
+                    result.success(null)
+                }
                 "reload" -> {
                     webView.reload()
                     result.success(null)
                 }
                 else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun copySelection(result: MethodChannel.Result) {
+        // Read text once, on explicit Copy. It never crosses the method channel
+        // or gets materialized for every handle/scroll/selectionchange event.
+        webView.evaluateJavascript("window.FolioSelection?.copyText() || ''") { raw ->
+            if (disposed) {
+                result.error("view_closed", "The Office view is closed.", null)
+                return@evaluateJavascript
+            }
+            try {
+                val text = JSONTokener(raw ?: "null").nextValue() as? String ?: ""
+                if (text.isNotEmpty()) {
+                    val clipboard = viewContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Folio", text))
+                    evaluate("window.FolioSelection?.clear();")
+                    webView.finishSelectionMode()
+                }
+                result.success(null)
+            } catch (_: Exception) {
+                result.error("copy_failed", "The selected text could not be copied.", null)
             }
         }
     }
@@ -185,6 +222,8 @@ internal class OfficePlatformView(
 
     private fun configureWebView() {
         webView.setBackgroundColor(Color.TRANSPARENT)
+        // Only our shared spring should provide edge feedback (no Android glow/stretch).
+        webView.overScrollMode = WebView.OVER_SCROLL_NEVER
         // Authored page/slide colours must not be recoloured by Force Dark.
         // This is the document WebView only; Folio's dark UI stays unchanged.
         webView.isForceDarkAllowed = false

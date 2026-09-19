@@ -1,15 +1,14 @@
-import 'package:flutter/material.dart' show SelectionArea;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:scroll_to_index/scroll_to_index.dart';
 
-import '../../../../shared/selection/folio_selection_toolbar.dart';
 import '../../../../shared/theme/folio_theme.dart';
 import '../../../../shared/widgets/scroll_edge_fade.dart';
 import '../data/text_document.dart';
 import '../../logic/reader_state.dart';
 import '../logic/text_document_renderer.dart';
+import 'text_document_selection.dart';
 
 const String _passiveStart = '\u{F0000}';
 const String _passiveEnd = '\u{F0001}';
@@ -39,12 +38,14 @@ class TextDocumentView extends StatelessWidget {
     required this.renderer,
     required this.scrollController,
     required this.activeHitKey,
+    this.onSelectionChanged,
     super.key,
   });
 
   final TextDocumentRenderer renderer;
   final AutoScrollController scrollController;
   final GlobalKey activeHitKey;
+  final ValueChanged<bool>? onSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -53,56 +54,60 @@ class TextDocumentView extends StatelessWidget {
       return const _EmptyDocument();
     }
     final activeChunk = renderer.activeHit?.chunkIndex;
-    return ScrollEdgeFade(
-      color: FolioColors.background,
-      child: ListView.builder(
-        key: const ValueKey<String>('reader_content'),
-        controller: scrollController,
-        physics: const BouncingScrollPhysics(
-          decelerationRate: ScrollDecelerationRate.fast,
-        ),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: EdgeInsets.fromLTRB(
-          24,
-          MediaQuery.viewPaddingOf(context).top + 104,
-          24,
-          MediaQuery.viewPaddingOf(context).bottom + 184,
-        ),
-        itemCount: content.chunks.length,
-        itemBuilder: (context, index) {
-          final chunk = content.chunks[index];
-          final hits = renderer.hitsForChunk(index);
-          return AutoScrollTag(
-            key: ValueKey<String>('reader_text_chunk_$index'),
-            controller: scrollController,
-            index: index,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: content.isMarkdown
-                      ? _MarkdownChunk(
-                          chunk: chunk,
-                          hits: hits,
-                          activeHit: renderer.activeHit,
-                          activeHitKey: index == activeChunk
-                              ? activeHitKey
-                              : null,
-                        )
-                      : _PlainTextChunk(
-                          chunk: chunk,
-                          hits: hits,
-                          activeHit: renderer.activeHit,
-                          activeHitKey: index == activeChunk
-                              ? activeHitKey
-                              : null,
-                        ),
+    return TextDocumentSelection(
+      document: content,
+      onSelectionChanged: onSelectionChanged,
+      child: ScrollEdgeFade(
+        color: FolioColors.background,
+        child: ListView.builder(
+          key: const ValueKey<String>('reader_content'),
+          controller: scrollController,
+          physics: const BouncingScrollPhysics(
+            decelerationRate: ScrollDecelerationRate.fast,
+          ),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
+            24,
+            MediaQuery.viewPaddingOf(context).top + 104,
+            24,
+            MediaQuery.viewPaddingOf(context).bottom + 184,
+          ),
+          itemCount: content.chunks.length,
+          itemBuilder: (context, index) {
+            final chunk = content.chunks[index];
+            final hits = renderer.hitsForChunk(index);
+            return AutoScrollTag(
+              key: ValueKey<String>('reader_text_chunk_$index'),
+              controller: scrollController,
+              index: index,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: content.isMarkdown
+                        ? _MarkdownChunk(
+                            chunk: chunk,
+                            hits: hits,
+                            activeHit: renderer.activeHit,
+                            activeHitKey: index == activeChunk
+                                ? activeHitKey
+                                : null,
+                          )
+                        : _PlainTextChunk(
+                            chunk: chunk,
+                            hits: hits,
+                            activeHit: renderer.activeHit,
+                            activeHitKey: index == activeChunk
+                                ? activeHitKey
+                                : null,
+                          ),
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -131,16 +136,13 @@ class _PlainTextChunk extends StatelessWidget {
       fontWeight: FontWeight.w400,
       letterSpacing: -0.05,
     );
-    return SelectionArea(
-      contextMenuBuilder: folioSelectionAreaContextMenuBuilder,
-      child: Text.rich(
-        TextSpan(
-          style: baseStyle,
-          children: _highlightedSpans(chunk, hits, activeHit, baseStyle),
-        ),
-        key: activeHit == null ? null : activeHitKey,
-        textAlign: TextAlign.start,
+    return Text.rich(
+      TextSpan(
+        style: baseStyle,
+        children: _highlightedSpans(chunk, hits, activeHit, baseStyle),
       ),
+      key: activeHit == null ? null : activeHitKey,
+      textAlign: TextAlign.start,
     );
   }
 }
@@ -212,8 +214,9 @@ class _MarkdownChunk extends StatelessWidget {
     return MarkdownBody(
       data:
           '${chunk.renderPrefix}${_markedSource(chunk, hits, activeHit)}${chunk.renderSuffix}',
-      selectable: true,
-      contextMenuBuilder: folioEditableTextContextMenuBuilder,
+      // SelectableText creates an isolated editor for each Markdown block.
+      // Text.rich instead registers every block with our document SelectionArea.
+      selectable: false,
       softLineBreak: true,
       onTapLink: (text, href, title) {},
       imageBuilder: (uri, title, alt) => _BlockedImage(label: alt),

@@ -75,6 +75,8 @@ class _ReaderScreenState extends State<ReaderScreen>
   int? _contentPointer;
   Offset? _contentPointerOrigin;
   bool _contentPointerMoved = false;
+  Duration? _contentPointerStarted;
+  bool _textSelectionActive = false;
   bool _chromeReducedMotion = false;
   double _chromeScrollIntent = 0;
 
@@ -314,7 +316,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
-    if (_searchExpanded) {
+    if (_searchExpanded || _textSelectionActive) {
       return false;
     }
     if (notification case ScrollUpdateNotification(
@@ -398,7 +400,8 @@ class _ReaderScreenState extends State<ReaderScreen>
     }
     _contentPointer = event.pointer;
     _contentPointerOrigin = event.position;
-    _contentPointerMoved = false;
+    _contentPointerMoved = _textSelectionActive;
+    _contentPointerStarted = event.timeStamp;
   }
 
   void _contentPointerMove(PointerMoveEvent event) {
@@ -415,7 +418,10 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (event.pointer != _contentPointer) {
       return;
     }
-    final isTap = !_contentPointerMoved;
+    final started = _contentPointerStarted;
+    final isTap = !_contentPointerMoved && !_textSelectionActive &&
+        started != null &&
+        event.timeStamp - started < const Duration(milliseconds: 450);
     _clearContentPointer();
     if (isTap) {
       _handleContentTap();
@@ -431,7 +437,16 @@ class _ReaderScreenState extends State<ReaderScreen>
   void _clearContentPointer() {
     _contentPointer = null;
     _contentPointerOrigin = null;
+    _contentPointerStarted = null;
     _contentPointerMoved = false;
+  }
+
+  void _textSelectionChanged(bool active) {
+    _textSelectionActive = active;
+    if (active) {
+      _contentPointerMoved = true;
+      _chromeScrollIntent = 0;
+    }
   }
 
   void _handleVerticalReadingGesture(double scrollDelta) {
@@ -498,6 +513,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                     scrollController: _scrollController,
                     activeHitKey: _activeHitKey,
                     onContentTap: _handleContentTap,
+                    onTextSelectionChanged: _textSelectionChanged,
                     onReadingGesture: _handleVerticalReadingGesture,
                   ),
                 ),
@@ -702,6 +718,7 @@ class _ReaderBody extends StatelessWidget {
     required this.activeHitKey,
     required this.onContentTap,
     required this.onReadingGesture,
+    required this.onTextSelectionChanged,
   });
 
   final DocumentRenderer renderer;
@@ -709,6 +726,7 @@ class _ReaderBody extends StatelessWidget {
   final GlobalKey activeHitKey;
   final VoidCallback onContentTap;
   final ValueChanged<double> onReadingGesture;
+  final ValueChanged<bool> onTextSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -738,6 +756,7 @@ class _ReaderBody extends StatelessWidget {
           renderer: text,
           scrollController: scrollController,
           activeHitKey: activeHitKey,
+          onSelectionChanged: onTextSelectionChanged,
         ),
       );
     }
