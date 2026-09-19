@@ -249,41 +249,23 @@ class _LibraryContent extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
-                  Expanded(
-                    child: Row(
-                      children: <Widget>[
-                        const Flexible(
-                          child: Text(
-                            'Folio',
-                            style: FolioText.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        LiquidGlassControl(
-                          key: const ValueKey<String>('library_settings'),
-                          size: const Size.square(36),
-                          semanticsLabel: 'Settings',
-                          onTap: onOpenSettings,
-                          child: const AdaptiveGlassIcon(
-                            LucideIcons.settings,
-                            size: 19,
-                          ),
-                        ),
-                      ],
+                  const Text(
+                    'Folio',
+                    style: FolioText.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Spacer(),
+                  LiquidGlassControl(
+                    key: const ValueKey<String>('library_settings'),
+                    size: const Size.square(36),
+                    semanticsLabel: 'Settings',
+                    onTap: onOpenSettings,
+                    child: const AdaptiveGlassIcon(
+                      LucideIcons.settings,
+                      size: 19,
                     ),
                   ),
-                  if (controller.loadState == LibraryLoadState.ready)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 3),
-                      child: Text(
-                        controller.isRefreshing
-                            ? 'Scanning…'
-                            : '${controller.totalCount} documents',
-                        style: FolioText.metadata,
-                      ),
-                    ),
                 ],
               ),
             ),
