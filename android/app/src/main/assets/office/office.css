@@ -77,8 +77,8 @@ body[data-format="docx"] #document > .docx-wrapper {
 body[data-format="docx"] .docx-wrapper > section.docx {
   flex: none;
   margin: 0 !important;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 1056px;
+  /* Measure the actual page, not a placeholder, before pagination/fit. */
+  content-visibility: visible;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28) !important;
 }
 
@@ -157,3 +157,21 @@ mark[data-folio-search="active"] {
     transition: none !important;
   }
 }
+
+/* Isolate the authored document from the application's dark UI. */
+#document { color-scheme: only light; }
+body[data-format="docx"] .docx-wrapper > section.docx > article,
+body[data-format="docx"] .docx-wrapper > section.docx > header,
+body[data-format="docx"] .docx-wrapper > section.docx > footer { flex-shrink: 0; }
+
+.folio-slide-frame > .slide {
+  border: 0 !important;
+  border-radius: 0 !important;
+  overflow: hidden;
+  color: #000;
+  background: #fff;
+}
+.folio-slide-background, .folio-master-layer { position: absolute; inset: 0; }
+.folio-master-layer { z-index: 0; }
+.folio-slide-frame .folio-group, .folio-slide-frame .folio-picture { box-sizing: border-box; }
+.folio-slide-frame .text-block { white-space: pre-wrap; overflow-wrap: normal; }

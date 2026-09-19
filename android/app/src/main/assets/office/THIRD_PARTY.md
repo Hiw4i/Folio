@@ -12,8 +12,10 @@ or network fallback is used.
 - `docx-preview.min.js` SHA-256:
   `051ef503f2677d53159a388b7384e950eda41ea4e47a103e5e36f124d7faea40`
 
-No renderer patch is applied. Folio supplies only host styling and a restricted
-bridge. JSZip 3.10.1 is bundled for this renderer.
+The SHA-256 above identifies the original upstream file. Folio now applies pinned
+image, anchor and style-order hooks through `docx-layout.js`.
+Current modified file SHA-256: `06f2018d3db2c7b1f87b284fbd8f1bb59d9dd2a10fe9592e40e0aeb1ad506720`.
+JSZip 3.10.1 is unchanged. See `docs/OFFICE_ENGINE_UPDATE.md`.
 
 ## JSZip 3.10.1
 
@@ -47,5 +49,8 @@ e9c231c30fbd78ea0a5954b6dc002ad1ce095f86a19db68aad88093989b2e245  pptxjs.css
 d2ba03ccfda9b6c876a7b8313e4a6268c2f98f333e57fc18863023a2a5a3df6e  nv.d3.min.css
 ```
 
-No renderer patch is applied. Folio disables media processing, navigation and
-all non-local requests in both JavaScript and the native WebView client.
+The SHA-256 above identifies the original upstream file. Folio now patches the
+conversion driver and installs compatibility hooks through `pptx-fidelity.js`.
+Current modified file SHA-256: `f1e64a3662043ff1051b56f48a046cfa6a01e0c3aee395ab55e70c98149b3ca2`.
+The dependencies listed above are unchanged. Folio disables media processing,
+navigation and non-local requests. See `docs/OFFICE_ENGINE_UPDATE.md`.

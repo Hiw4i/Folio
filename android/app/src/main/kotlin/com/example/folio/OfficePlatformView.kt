@@ -15,6 +15,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewAssetLoader
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
@@ -183,6 +185,12 @@ internal class OfficePlatformView(
 
     private fun configureWebView() {
         webView.setBackgroundColor(Color.TRANSPARENT)
+        // Authored page/slide colours must not be recoloured by Force Dark.
+        // This is the document WebView only; Folio's dark UI stays unchanged.
+        webView.isForceDarkAllowed = false
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, false)
+        }
         webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true)
         WebView.setWebContentsDebuggingEnabled(

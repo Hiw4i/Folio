@@ -2,7 +2,7 @@
   'use strict';
 
   const params = new URLSearchParams(window.location.search);
-  const format = params.get('format');
+  const format = params.get('format') || document.body.dataset.format;
   const viewport = document.getElementById('viewport');
   const documentRoot = document.getElementById('document');
   const status = document.getElementById('status');
@@ -18,7 +18,19 @@
     lastScroll: 0,
     scrollFrame: 0,
     pointer: null,
+    pages: [],
+    centers: [],
+    disposed: false,
+    resizeFrame: 0,
   };
+
+  const ownedUrls = new Set();
+  const createObjectURL = URL.createObjectURL.bind(URL);
+  const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+  URL.createObjectURL = (blob) => {
+    const url = createObjectURL(blob); ownedUrls.add(url); return url;
+  };
+  URL.revokeObjectURL = (url) => { ownedUrls.delete(url); revokeObjectURL(url); };
 
   document.body.dataset.format = format || 'unknown';
 
@@ -35,42 +47,40 @@
     post('error', { message, recoverable });
   }
 
-  function pageElements() {
-    if (format === 'docx') {
-      return Array.from(documentRoot.querySelectorAll('.docx-wrapper > section.docx'));
-    }
-    return Array.from(documentRoot.querySelectorAll('.folio-slide-frame'));
+  function pageElements() { return state.pages; }
+
+  function refreshGeometry() {
+    state.pages = Array.from(documentRoot.querySelectorAll(format === 'docx'
+      ? '.docx-wrapper > section.docx' : '.folio-slide-frame'));
+    const rect = viewport.getBoundingClientRect();
+    // One read batch after layout. The scroll path never measures every page.
+    state.centers = state.pages.map((page) => {
+      const r = page.getBoundingClientRect();
+      return format === 'pptx' ? r.left - rect.left + viewport.scrollLeft + r.width / 2
+        : r.top - rect.top + viewport.scrollTop + r.height / 2;
+    });
   }
 
   function publishPosition(force = false) {
-    const pages = pageElements();
-    if (!pages.length) return;
-    const viewportRect = viewport.getBoundingClientRect();
-    const center = format === 'pptx'
-      ? viewportRect.left + viewportRect.width / 2
-      : viewportRect.top + viewportRect.height / 2;
-    let closest = 0;
-    let closestDistance = Number.POSITIVE_INFINITY;
-    pages.forEach((page, index) => {
-      const rect = page.getBoundingClientRect();
-      const pageCenter = format === 'pptx'
-        ? rect.left + rect.width / 2
-        : rect.top + rect.height / 2;
-      const distance = Math.abs(pageCenter - center);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closest = index;
-      }
-    });
-    if (force || closest !== state.position || pages.length !== state.count) {
-      state.position = closest;
-      state.count = pages.length;
-      post('position', { current: closest + 1, count: pages.length });
+    if (!state.pages.length || state.disposed) return;
+    const center = format === 'pptx' ? viewport.scrollLeft + viewport.clientWidth / 2
+      : viewport.scrollTop + viewport.clientHeight / 2;
+    let lo = 0, hi = state.centers.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (state.centers[mid] < center) lo = mid + 1;
+      else hi = mid;
+    }
+    let closest = Math.min(lo, state.centers.length - 1);
+    if (closest > 0 && Math.abs(state.centers[closest - 1] - center) < Math.abs(state.centers[closest] - center)) closest--;
+    if (force || closest !== state.position || state.pages.length !== state.count) {
+      state.position = closest; state.count = state.pages.length;
+      post('position', { current: closest + 1, count: state.count });
     }
   }
 
   function onScroll() {
-    if (state.scrollFrame) return;
+    if (state.scrollFrame || state.disposed) return;
     state.scrollFrame = requestAnimationFrame(() => {
       state.scrollFrame = 0;
       const current = format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop;
@@ -119,93 +129,28 @@
       const height = numericStyle(slide, 'height', 540);
       const scale = Math.min(availableWidth / width, availableHeight / height);
       slide.style.transform = `scale(${scale})`;
-      slide.style.left = `${(viewport.clientWidth - width * scale) / 2}px`;
-      slide.style.top = `${(viewport.clientHeight - height * scale) / 2}px`;
+      slide.style.left = `${(availableWidth - width * scale) / 2}px`;
+      slide.style.top = `${(availableHeight - height * scale) / 2}px`;
     });
   }
 
-  function waitForSlides() {
-    let stablePasses = 0;
-    let previousCount = 0;
-    const started = performance.now();
-    const check = () => {
-      const count = documentRoot.querySelectorAll('.slide').length;
-      stablePasses = count > 0 && count === previousCount ? stablePasses + 1 : 0;
-      previousCount = count;
-      if (stablePasses >= 3) {
-        wrapSlides();
-        finishReady();
-        return;
-      }
-      if (performance.now() - started > 30000) {
-        fail('PowerPoint rendering did not finish.', true);
-        return;
-      }
-      window.setTimeout(check, 120);
-    };
-    check();
-  }
-
-  function paginateDocx() {
-    const wrapper = documentRoot.querySelector('.docx-wrapper');
-    if (!wrapper) return;
-    const sourcePages = Array.from(wrapper.querySelectorAll(':scope > section.docx'));
-    sourcePages.forEach((sourcePage) => {
-      sourcePage.style.contentVisibility = 'visible';
-      const style = getComputedStyle(sourcePage);
-      const pageHeight = Number.parseFloat(style.minHeight);
-      const paddingTop = Number.parseFloat(style.paddingTop) || 0;
-      const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
-      const contentHeight = pageHeight - paddingTop - paddingBottom;
-      const articles = Array.from(sourcePage.querySelectorAll(':scope > article'));
-      const blocks = articles.flatMap((article) => Array.from(article.children));
-      if (!Number.isFinite(pageHeight) || pageHeight <= 0 || !blocks.length) return;
-
-      const header = sourcePage.querySelector(':scope > header');
-      const footer = sourcePage.querySelector(':scope > footer');
-      const trailing = Array.from(sourcePage.children).filter((child) =>
-        child.tagName !== 'HEADER' && child.tagName !== 'ARTICLE' && child.tagName !== 'FOOTER');
-      const articleTemplate = articles[0];
-      const pages = [];
-
-      function newPage() {
-        const page = sourcePage.cloneNode(false);
-        page.dataset.folioPage = 'true';
-        page.style.height = `${pageHeight}px`;
-        page.style.minHeight = `${pageHeight}px`;
-        page.style.contentVisibility = 'visible';
-        if (header) page.appendChild(header.cloneNode(true));
-        const article = articleTemplate.cloneNode(false);
-        page.appendChild(article);
-        if (footer) page.appendChild(footer.cloneNode(true));
-        wrapper.insertBefore(page, sourcePage);
-        pages.push({ page, article });
-        return pages[pages.length - 1];
-      }
-
-      let current = newPage();
-      blocks.forEach((block) => {
-        current.article.appendChild(block);
-        const overflow = current.article.scrollHeight > contentHeight + 1;
-        if (overflow && current.article.children.length > 1) {
-          current.article.removeChild(block);
-          current = newPage();
-          current.article.appendChild(block);
-        }
-        if (current.article.scrollHeight > contentHeight + 1 &&
-            current.article.children.length === 1) {
-          // Keep a single oversized table or drawing visible instead of clipping it.
-          current.page.style.height = 'auto';
-          current.page.style.minHeight = `${pageHeight}px`;
-        }
-      });
-      trailing.forEach((child) => current.page.appendChild(child));
-      sourcePage.remove();
-      pages.forEach(({ page }) => { page.style.contentVisibility = ''; });
-    });
+  async function waitForAssets() {
+    // Wait for intrinsic image metrics and embedded fonts before paginating.
+    // Broken optional resources must not leave the reader stuck in Loading.
+    const tasks = Array.from(documentRoot.querySelectorAll('img[src]')).map((img) =>
+      typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve());
+    if (document.fonts) tasks.push(document.fonts.ready);
+    let timer;
+    try {
+      await Promise.race([Promise.allSettled(tasks), new Promise((resolve) => {
+        timer = setTimeout(resolve, 8000);
+      })]);
+    } finally { clearTimeout(timer); }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
   }
 
   function finishReady() {
+    refreshGeometry();
     const count = pageElements().length;
     if (!count) {
       fail('The document contains no displayable pages.', false);
@@ -217,7 +162,7 @@
     publishPosition(true);
     post('ready', {
       count,
-      hasText: documentRoot.innerText.trim().length > 0,
+      hasText: searchableTextNodes().length > 0,
     });
   }
 
@@ -236,28 +181,37 @@
       renderFooters: true,
       renderFootnotes: true,
       renderEndnotes: true,
-      useBase64URL: true,
+      useBase64URL: false,
+      ignoreLastRenderedPageBreak: false,
+      renderAltChunks: false,
     });
-    paginateDocx();
+    await waitForAssets();
+    await window.FolioDocx.paginate(documentRoot);
+    window.FolioDocx.fit(documentRoot, viewport);
     finishReady();
   }
 
-  function renderPptx() {
-    const pptxJsZip = window.JSZip;
-    if (!window.jQuery?.fn?.pptxToHtml) {
+  async function renderPptx() {
+    if (!window.jQuery?.fn?.pptxToHtml || !window.FolioPptx) {
       throw new Error('The PowerPoint renderer is unavailable.');
     }
-    // PPTXjs requires JSZip 2; docx-preview is loaded after it with JSZip 3.
-    window.JSZip = window.folioPptxJsZip || pptxJsZip;
-    window.jQuery(documentRoot).pptxToHtml({
-      pptxFileUrl: documentUrl,
+    const response = await fetch(documentUrl, { cache: 'no-store', credentials: 'omit' });
+    if (!response.ok) throw new Error('The PowerPoint source is unavailable.');
+    window.JSZip = window.folioPptxJsZip || window.JSZip;
+    // Await actual conversion, including all slides/styles/charts. Counting
+    // stable DOM nodes can incorrectly report a partly-rendered deck as ready.
+    await window.jQuery(documentRoot).pptxToHtml({
+      folioBuffer: await response.arrayBuffer(),
+      pptxFileUrl: '',
       slideMode: false,
       keyBoardShortCut: false,
       mediaProcess: false,
       themeProcess: true,
       incSlide: { height: 0, width: 0 },
     });
-    waitForSlides();
+    await waitForAssets();
+    wrapSlides();
+    finishReady();
   }
 
   function clearSearch() {
@@ -288,7 +242,7 @@
   function search(query) {
     const revision = ++state.searchRevision;
     clearSearch();
-    const normalized = String(query || '').trim().toLocaleLowerCase('en-US');
+    const normalized = String(query || '').trim();
     if (!normalized) {
       post('search', { count: 0, active: -1, searching: false });
       return;
@@ -298,20 +252,15 @@
       if (revision !== state.searchRevision) return;
       searchableTextNodes().forEach((node) => {
         const text = node.nodeValue || '';
-        const lower = text.toLocaleLowerCase('en-US');
+        const expression = new RegExp(normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
         const indexes = [];
-        let from = 0;
-        while (from <= lower.length - normalized.length) {
-          const index = lower.indexOf(normalized, from);
-          if (index < 0) break;
-          indexes.push(index);
-          from = index + Math.max(1, normalized.length);
-        }
+        let match;
+        while ((match = expression.exec(text))) indexes.push({ index: match.index, length: match[0].length });
         for (let i = indexes.length - 1; i >= 0; i -= 1) {
-          const index = indexes[i];
+          const { index, length } = indexes[i];
           const range = document.createRange();
           range.setStart(node, index);
-          range.setEnd(node, index + normalized.length);
+          range.setEnd(node, index + length);
           const mark = document.createElement('mark');
           mark.dataset.folioSearch = 'match';
           range.surroundContents(mark);
@@ -399,9 +348,22 @@
     }
   }, { passive: true });
   window.addEventListener('resize', () => {
-    layoutSlides();
-    publishPosition(true);
+    if (state.resizeFrame || !state.ready || state.disposed) return;
+    state.resizeFrame = requestAnimationFrame(() => {
+      state.resizeFrame = 0;
+      layoutSlides();
+      if (format === 'docx') window.FolioDocx.fit(documentRoot, viewport);
+      refreshGeometry(); publishPosition(true);
+    });
   });
+  window.addEventListener('pagehide', () => {
+    state.disposed = true;
+    cancelAnimationFrame(state.scrollFrame); cancelAnimationFrame(state.resizeFrame);
+    state.searchRevision++;
+    for (const url of ownedUrls) revokeObjectURL(url);
+    ownedUrls.clear();
+    URL.createObjectURL = createObjectURL; URL.revokeObjectURL = revokeObjectURL;
+  }, { once: true });
 
   Promise.resolve()
     .then(() => {
