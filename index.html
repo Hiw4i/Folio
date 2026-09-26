@@ -52,7 +52,13 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            cursor: none !important; /* Custom pointer styling */
+        }
+
+        /* Custom cursor only for non-touch devices */
+        @media (hover: hover) and (pointer: fine) {
+            * {
+                cursor: none !important;
+            }
         }
 
         body {
@@ -85,29 +91,38 @@
             z-index: 10;
         }
 
-        /* Custom Dual Cursor */
-        #cursor {
-            position: fixed;
-            width: 8px;
-            height: 8px;
-            background: #ffffff;
-            border-radius: 50%;
-            z-index: 10000;
-            pointer-events: none;
-            mix-blend-mode: difference;
-            transform: translate(-50%, -50%);
+        /* Custom Dual Cursor - only for non-touch devices */
+        @media (hover: hover) and (pointer: fine) {
+            #cursor {
+                position: fixed;
+                width: 8px;
+                height: 8px;
+                background: #ffffff;
+                border-radius: 50%;
+                z-index: 10000;
+                pointer-events: none;
+                mix-blend-mode: difference;
+                transform: translate(-50%, -50%);
+            }
+
+            #cursor-ring {
+                position: fixed;
+                width: 44px;
+                height: 44px;
+                border: 1px solid rgba(255, 255, 255, 0.45);
+                border-radius: 50%;
+                z-index: 9999;
+                pointer-events: none;
+                mix-blend-mode: difference;
+                transform: translate(-50%, -50%);
+            }
         }
 
-        #cursor-ring {
-            position: fixed;
-            width: 44px;
-            height: 44px;
-            border: 1px solid rgba(255, 255, 255, 0.45);
-            border-radius: 50%;
-            z-index: 9999;
-            pointer-events: none;
-            mix-blend-mode: difference;
-            transform: translate(-50%, -50%);
+        /* Hide cursor elements on touch devices */
+        @media (hover: none) and (pointer: coarse) {
+            #cursor, #cursor-ring {
+                display: none;
+            }
         }
 
         /* Text Split Animation Character Styles */
@@ -130,7 +145,7 @@
             -webkit-backdrop-filter: blur(20px) saturate(180%);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 100px;
-            padding: 8px 28px;
+            padding: 4px 28px;
             z-index: 1000;
             display: flex;
             align-items: center;
@@ -140,6 +155,49 @@
             text-transform: uppercase;
             opacity: 0;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        @media (max-width: 768px) {
+            .capsule-nav {
+                top: 16px;
+                padding: 0px 12px;
+                gap: 12px;
+                font-size: 9px;
+                letter-spacing: 0.08em;
+                width: auto;
+                max-width: 280px;
+                justify-content: space-between;
+            }
+
+            .nav-item {
+                padding-top: 1px;
+                padding-bottom: 1px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .capsule-nav {
+                padding: 0px 10px;
+                gap: 10px;
+                font-size: 8px;
+                max-width: 240px;
+            }
+        }
+
+        /* Touch-friendly tap targets for mobile */
+        @media (hover: none) and (pointer: coarse) {
+            .nav-item {
+                min-height: 44px;
+                min-width: 44px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            button, a {
+                min-height: 44px;
+                min-width: 44px;
+            }
         }
 
         /* Magical Dynamic Fill Button */
@@ -224,6 +282,45 @@
             position: relative;
         }
 
+        /* Mobile responsive: vertical layout for horizontal panels */
+        @media (max-width: 768px) {
+            .horizontal-container {
+                display: block;
+                width: 100%;
+                height: auto;
+            }
+
+            .horizontal-panel {
+                width: 100%;
+                height: auto;
+                min-height: 70vh;
+                padding: 6vw;
+                border-right: none;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            }
+
+            #horizontal-trigger {
+                min-height: auto;
+            }
+
+            /* Better spacing for mobile sections */
+            section {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+
+            /* Optimize hero for mobile */
+            #hero {
+                min-height: 100vh;
+                padding-top: 60px;
+            }
+
+            /* Better touch spacing */
+            .liquid-card {
+                touch-action: manipulation;
+            }
+        }
+
         /* Custom Scrollbar */
         ::-webkit-scrollbar {
             width: 4px;
@@ -237,6 +334,23 @@
         }
         ::-webkit-scrollbar-thumb:hover {
             background: #444;
+        }
+
+        /* Hide scrollbar on mobile but keep functionality */
+        @media (max-width: 768px) {
+            ::-webkit-scrollbar {
+                width: 0px;
+                background: transparent;
+            }
+
+            #download {
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                padding-top: 60px;
+                padding-bottom: 40px;
+            }
         }
     </style>
 </head>
@@ -254,29 +368,29 @@
 
     <!-- Floating Capsule Navigation -->
     <nav class="capsule-nav" id="nav">
-        <a href="#hero" class="nav-item text-zinc-400 hover:text-white transition font-medium" id="nav-folio">FOLIO</a>
-        <a href="#about" class="nav-item text-zinc-400 hover:text-white transition font-medium" id="nav-engine">Engine</a>
-        <a href="#formats" class="nav-item text-zinc-400 hover:text-white transition font-medium">Formats</a>
-        <a href="#download" class="nav-item text-zinc-400 hover:text-white transition font-medium">Download</a>
+        <a href="#hero" class="nav-item text-zinc-400 hover:text-white transition font-medium py-2 px-1 text-nowrap" id="nav-folio">FOLIO</a>
+        <a href="#about" class="nav-item text-zinc-400 hover:text-white transition font-medium py-2 px-1 text-nowrap" id="nav-engine">Engine</a>
+        <a href="#formats" class="nav-item text-zinc-400 hover:text-white transition font-medium py-2 px-1 text-nowrap">Formats</a>
+        <a href="#download" class="nav-item text-zinc-400 hover:text-white transition font-medium py-2 px-1 text-nowrap">Download</a>
     </nav>
 
     <!-- MAIN CONTENT WRAPPER -->
     <main class="relative z-20">
 
         <!-- HERO SECTION -->
-        <section class="min-h-screen w-full flex items-center justify-center px-6 sm:px-12 relative" id="hero">
-            <div class="w-full max-w-7xl mx-auto pt-20">
+        <section class="min-h-screen w-full flex items-center justify-center px-4 sm:px-6 md:px-12 relative" id="hero">
+            <div class="w-full max-w-7xl mx-auto pt-12 sm:pt-20">
                 
                 <!-- Editorial Giant Headline -->
-                <h1 class="text-[17vw] sm:text-[16vw] font-serif italic font-black leading-[0.78] tracking-tighter text-white py-16 select-none" id="split-title" style="mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%);">
+                <h1 class="text-[20vw] sm:text-[17vw] md:text-[16vw] font-serif italic font-black leading-[0.78] tracking-tighter text-white py-8 sm:py-16 select-none" id="split-title" style="mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%);">
                     FOLIO
                 </h1>
 
                 <!-- Subline with Horizontal Rule Accent -->
-                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 mt-12 opacity-0" id="hero-subline">
-                    <div class="flex items-center gap-6">
-                        <div class="h-px w-20 sm:w-32 bg-white/40"></div>
-                        <p class="text-xl sm:text-2xl font-normal text-zinc-200 max-w-xl leading-relaxed">
+                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 sm:gap-8 mt-8 sm:mt-12 opacity-0" id="hero-subline">
+                    <div class="flex items-center gap-4 sm:gap-6">
+                        <div class="h-px w-16 sm:w-20 bg-white/40"></div>
+                        <p class="text-lg sm:text-xl md:text-2xl font-normal text-zinc-200 max-w-xl leading-relaxed">
                             The document reader for Android.<br>
                             Perfect in every way.
                         </p>
@@ -284,8 +398,8 @@
 
                     <!-- Call To Action Dynamic Buttons -->
                     <div class="flex items-center gap-4 w-full md:w-auto">
-                        <a href="#download" class="magical-btn px-8 py-4 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-2 text-white">
-                            <i data-lucide="download" class="w-4 h-4"></i>
+                        <a href="#download" class="magical-btn px-6 sm:px-8 py-3 sm:py-4 rounded-full text-[10px] sm:text-xs font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase flex items-center justify-center gap-2 text-white">
+                            <i data-lucide="download" class="w-3 sm:w-4 h-3 sm:h-4"></i>
                             <span>DOWNLOAD</span>
                         </a>
                     </div>
@@ -295,28 +409,28 @@
         </section>
 
         <!-- PHILOSOPHY / INTRO SECTION -->
-        <section class="min-h-screen w-full flex items-center justify-center px-6 sm:px-12 py-32" id="about">
-            <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-24 items-center">
+        <section class="min-h-screen w-full flex items-center justify-center px-4 sm:px-6 md:px-12 py-20 sm:py-32" id="about">
+            <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-24 items-center">
                 
-                <div class="space-y-8">
-                    <span class="text-xs font-mono tracking-[0.4em] text-zinc-500 uppercase">Philosophy</span>
-                    <h2 class="text-5xl sm:text-7xl font-bold tracking-tighter leading-[1.05] reveal-text">
+                <div class="space-y-6 sm:space-y-8">
+                    <span class="text-[10px] sm:text-xs font-mono tracking-[0.3em] sm:tracking-[0.4em] text-zinc-500 uppercase">Philosophy</span>
+                    <h2 class="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter leading-[1.05] reveal-text">
                         Crafted For Users<br>
                         <span class="font-serif italic font-normal text-zinc-400">Who refuse ugly software.</span>
                     </h2>
-                    <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed animate-fade">
+                    <p class="text-base sm:text-lg md:text-xl text-zinc-300 font-normal leading-relaxed animate-fade">
                         Built for people tired of broken, bloated file readers that make reading documents a chore. 
                     </p>
                 </div>
 
                 <!-- Abstract Visual Geometry Badge -->
                 <div class="flex items-center justify-center">
-                    <div class="w-72 h-72 sm:w-96 sm:h-96 border border-white/10 rounded-full flex items-center justify-center p-10 relative group">
+                    <div class="w-56 h-56 sm:w-72 sm:h-72 md:w-96 md:h-96 border border-white/10 rounded-full flex items-center justify-center p-6 sm:p-10 relative group">
                         <div class="absolute inset-0 border-t border-b border-white/30 rounded-full animate-spin" style="animation-duration: 25s;"></div>
                         <div class="absolute inset-4 border border-white/5 rounded-full"></div>
                         <div class="text-center space-y-2">
-                            <span class="text-6xl sm:text-8xl font-serif italic text-white/20 group-hover:text-white/40 transition-colors">0.02s</span>
-                            <p class="text-xs font-mono tracking-[0.3em] text-zinc-500 uppercase">Parse Latency</p>
+                            <span class="text-5xl sm:text-6xl md:text-8xl font-serif italic text-white/20 group-hover:text-white/40 transition-colors">0.02s</span>
+                            <p class="text-[10px] sm:text-xs font-mono tracking-[0.2em] sm:tracking-[0.3em] text-zinc-500 uppercase">Parse Latency</p>
                         </div>
                     </div>
                 </div>
@@ -330,10 +444,10 @@
                 
                 <!-- Panel 1: 0 Ads & 100% Free -->
                 <div class="horizontal-panel bg-zinc-950/40 border-r border-white/5">
-                    <div class="max-w-3xl space-y-6">
-                        <span class="text-xs font-mono tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 01</span>
-                        <h2 class="text-5xl sm:text-7xl font-black italic font-serif tracking-tight">0 Ads & 100% Free</h2>
-                        <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed">
+                    <div class="max-w-3xl space-y-6 w-full">
+                        <span class="text-xs font-mono tracking-[0.3em] sm:tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 01</span>
+                        <h2 class="text-4xl sm:text-5xl md:text-7xl font-black italic font-serif tracking-tight">0 Ads & 100% Free</h2>
+                        <p class="text-base sm:text-lg md:text-xl text-zinc-300 font-normal leading-relaxed">
                             No account creation, no subscriptions, zero ads, and no tracking.
                         </p>
                     </div>
@@ -341,10 +455,10 @@
 
                 <!-- Panel 2: Sub-Millisecond Speed -->
                 <div class="horizontal-panel bg-black border-r border-white/5" id="engine-start">
-                    <div class="max-w-3xl space-y-6">
-                        <span class="text-xs font-mono tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 02</span>
-                        <h2 class="text-5xl sm:text-7xl font-black italic font-serif tracking-tight">Sub-Millisecond Speed</h2>
-                        <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed">
+                    <div class="max-w-3xl space-y-6 w-full">
+                        <span class="text-xs font-mono tracking-[0.3em] sm:tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 02</span>
+                        <h2 class="text-4xl sm:text-5xl md:text-7xl font-black italic font-serif tracking-tight">Sub-Millisecond Speed</h2>
+                        <p class="text-base sm:text-lg md:text-xl text-zinc-300 font-normal leading-relaxed">
                             Written in low-level Rust bindings for Android NDK. Pages load before your thumb finishes tapping the screen.
                         </p>
                     </div>
@@ -352,10 +466,10 @@
 
                 <!-- Panel 3: Zero Telemetry & Offline -->
                 <div class="horizontal-panel bg-zinc-950/40">
-                    <div class="max-w-3xl space-y-6">
-                        <span class="text-xs font-mono tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 03</span>
-                        <h2 class="text-5xl sm:text-7xl font-black italic font-serif tracking-tight">Zero Telemetry</h2>
-                        <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed">
+                    <div class="max-w-3xl space-y-6 w-full">
+                        <span class="text-xs font-mono tracking-[0.3em] sm:tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 03</span>
+                        <h2 class="text-4xl sm:text-5xl md:text-7xl font-black italic font-serif tracking-tight">Zero Telemetry</h2>
+                        <p class="text-base sm:text-lg md:text-xl text-zinc-300 font-normal leading-relaxed">
                             Your files stay strictly on your device. Folio requests zero internet permissions and contains zero tracking SDKs.
                         </p>
                     </div>
@@ -365,77 +479,77 @@
         </div>
 
         <!-- FORMATS SECTION (STATIC CARDS GRID) -->
-        <section class="py-32 px-6 sm:px-12 max-w-7xl mx-auto" id="formats">
-            <div class="mb-20 space-y-4">
-                <span class="text-xs font-mono tracking-[0.4em] text-zinc-500 uppercase">Universal Engine</span>
-                <h2 class="text-4xl sm:text-6xl font-extrabold tracking-tight">
+        <section class="py-20 sm:py-32 px-4 sm:px-6 md:px-12 max-w-7xl mx-auto" id="formats">
+            <div class="mb-12 sm:mb-20 space-y-3 sm:space-y-4">
+                <span class="text-[10px] sm:text-xs font-mono tracking-[0.3em] sm:tracking-[0.4em] text-zinc-500 uppercase">Universal Engine</span>
+                <h2 class="text-3xl sm:text-4xl md:text-6xl font-extrabold tracking-tight">
                     Supported Formats. <br>
                     <span class="font-serif italic font-normal text-zinc-500">Perfect fidelity for every document.</span>
                 </h2>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 
                 <!-- PDF -->
-                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                <div class="liquid-card p-6 sm:p-8 rounded-2xl sm:rounded-3xl flex flex-col justify-between h-64 sm:h-72">
                     <div>
-                        <span class="text-4xl font-serif italic font-black text-white">.PDF</span>
+                        <span class="text-3xl sm:text-4xl font-serif italic font-black text-white">.PDF</span>
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold mb-2">PDF Vector Engine</h3>
-                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                        <h3 class="text-base sm:text-lg font-bold mb-2">PDF Vector Engine</h3>
+                        <p class="text-xs sm:text-sm text-zinc-300 font-normal leading-relaxed">
                             Vector-crisp zooming, table layout reflow, instantaneous text searching, and annotation layer rendering.
                         </p>
                     </div>
                 </div>
 
                 <!-- DOCX -->
-                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                <div class="liquid-card p-6 sm:p-8 rounded-2xl sm:rounded-3xl flex flex-col justify-between h-64 sm:h-72">
                     <div>
-                        <span class="text-4xl font-serif italic font-black text-white">.DOCX</span>
+                        <span class="text-3xl sm:text-4xl font-serif italic font-black text-white">.DOCX</span>
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold mb-2">Word Document Parser</h3>
-                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                        <h3 class="text-base sm:text-lg font-bold mb-2">Word Document Parser</h3>
+                        <p class="text-xs sm:text-sm text-zinc-300 font-normal leading-relaxed">
                             Full structural parsing for Microsoft Word documents with matched typography, tables, and styles.
                         </p>
                     </div>
                 </div>
 
                 <!-- PPTX -->
-                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                <div class="liquid-card p-6 sm:p-8 rounded-2xl sm:rounded-3xl flex flex-col justify-between h-64 sm:h-72">
                     <div>
-                        <span class="text-4xl font-serif italic font-black text-white">.PPTX</span>
+                        <span class="text-3xl sm:text-4xl font-serif italic font-black text-white">.PPTX</span>
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold mb-2">Presentation Deck View</h3>
-                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                        <h3 class="text-base sm:text-lg font-bold mb-2">Presentation Deck View</h3>
+                        <p class="text-xs sm:text-sm text-zinc-300 font-normal leading-relaxed">
                             Fluid slide deck navigation with speaker notes mode and high-resolution graphic rendering.
                         </p>
                     </div>
                 </div>
 
                 <!-- MD -->
-                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                <div class="liquid-card p-6 sm:p-8 rounded-2xl sm:rounded-3xl flex flex-col justify-between h-64 sm:h-72">
                     <div>
-                        <span class="text-4xl font-serif italic font-black text-white">.MD</span>
+                        <span class="text-3xl sm:text-4xl font-serif italic font-black text-white">.MD</span>
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold mb-2">Markdown & Formulae</h3>
-                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                        <h3 class="text-base sm:text-lg font-bold mb-2">Markdown & Formulae</h3>
+                        <p class="text-xs sm:text-sm text-zinc-300 font-normal leading-relaxed">
                             Native Markdown parsing with code syntax highlighting and mathematical formula rendering.
                         </p>
                     </div>
                 </div>
 
                 <!-- TXT -->
-                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72 sm:col-span-2 lg:col-span-2">
+                <div class="liquid-card p-6 sm:p-8 rounded-2xl sm:rounded-3xl flex flex-col justify-between h-64 sm:h-72 sm:col-span-2 lg:col-span-2">
                     <div>
-                        <span class="text-4xl font-serif italic font-black text-white">.TXT</span>
+                        <span class="text-3xl sm:text-4xl font-serif italic font-black text-white">.TXT</span>
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold mb-2">Plain Text</h3>
-                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                        <h3 class="text-base sm:text-lg font-bold mb-2">Plain Text</h3>
+                        <p class="text-xs sm:text-sm text-zinc-300 font-normal leading-relaxed">
                             Ultra-lightweight plain text viewer with auto-detected line encodings and monospace mode.
                         </p>
                     </div>
@@ -445,33 +559,34 @@
         </section>
 
         <!-- DOWNLOAD CTA SECTION -->
-        <section class="py-32 px-6 sm:px-12 max-w-7xl mx-auto text-center" id="download">
-            <div class="space-y-12">
-                <h2 class="text-[12vw] font-serif italic font-black tracking-tighter leading-none select-none">
+        <section class="py-20 sm:py-32 px-4 sm:px-6 md:px-12 max-w-7xl mx-auto text-center" id="download">
+            <div class="space-y-8 sm:space-y-12">
+                <h2 class="text-[15vw] sm:text-[12vw] font-serif italic font-black tracking-tighter leading-none select-none">
                     READ PURE
                 </h2>
 
-                <p class="text-zinc-300 text-lg sm:text-xl max-w-2xl mx-auto font-normal leading-relaxed">
+                <p class="text-zinc-300 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-normal leading-relaxed px-4">
                     Zero irritation. Zero cost. Pure reading perfection that changes everything.
                 </p>
 
                 <!-- Actions Trio -->
-                <div class="flex flex-col sm:flex-row items-center justify-center gap-5 pt-6">
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-5 pt-6">
                     
-                    <button onclick="handleGooglePlay()" class="magical-btn w-full sm:w-auto px-10 py-5 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-3 text-white">
-                        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <button onclick="handleGooglePlay()" class="magical-btn w-full sm:w-auto px-6 sm:px-10 py-4 sm:py-5 rounded-full text-[10px] sm:text-xs font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase flex items-center justify-center gap-2 sm:gap-3 text-white">
+                        <svg class="w-4 sm:w-5 h-4 sm:h-5 fill-current" viewBox="0 0 24 24">
                             <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.5,12.92 20.16,13.19L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z"/>
                         </svg>
-                        <span>Download from Google Play</span>
+                        <span class="hidden sm:inline">Download from Google Play</span>
+                        <span class="sm:hidden">Google Play</span>
                     </button>
 
-                    <button onclick="handleDownload()" class="magical-btn w-full sm:w-auto px-10 py-5 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-3 text-zinc-300">
-                        <i data-lucide="download" class="w-4 h-4"></i>
+                    <button onclick="handleDownload()" class="magical-btn w-full sm:w-auto px-6 sm:px-10 py-4 sm:py-5 rounded-full text-[10px] sm:text-xs font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase flex items-center justify-center gap-2 sm:gap-3 text-zinc-300">
+                        <i data-lucide="download" class="w-3 sm:w-4 h-3 sm:h-4"></i>
                         <span>Direct APK (14MB)</span>
                     </button>
 
-                    <button onclick="toggleQRModal()" class="magical-btn w-full sm:w-auto px-8 py-5 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-3 text-zinc-400">
-                        <i data-lucide="qr-code" class="w-4 h-4"></i>
+                    <button onclick="toggleQRModal()" class="magical-btn w-full sm:w-auto px-6 sm:px-8 py-4 sm:py-5 rounded-full text-[10px] sm:text-xs font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase flex items-center justify-center gap-2 sm:gap-3 text-zinc-400">
+                        <i data-lucide="qr-code" class="w-3 sm:w-4 h-3 sm:h-4"></i>
                         <span>Scan QR</span>
                     </button>
 
@@ -490,15 +605,15 @@
 
     <!-- QR Code Modal -->
     <div id="qr-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center hidden p-4">
-        <div class="liquid-card p-8 rounded-3xl max-w-sm w-full border border-white/20 text-center relative flex flex-col items-center">
+        <div class="liquid-card p-6 sm:p-8 rounded-2xl sm:rounded-3xl max-w-sm w-full border border-white/20 text-center relative flex flex-col items-center">
             <button onclick="toggleQRModal()" class="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white transition">
                 <i data-lucide="x" class="w-5 h-5"></i>
             </button>
-            <h3 class="text-xl font-bold mb-2">Scan with Android</h3>
-            <p class="text-xs text-zinc-400 mb-6">Point your mobile camera to download the APK directly to your phone.</p>
+            <h3 class="text-lg sm:text-xl font-bold mb-2">Scan with Android</h3>
+            <p class="text-[10px] sm:text-xs text-zinc-400 mb-4 sm:mb-6">Point your mobile camera to download the APK directly to your phone.</p>
             
-            <div class="p-4 bg-white rounded-2xl mb-6 shadow-2xl">
-                <svg class="w-44 h-44 fill-black" viewBox="0 0 24 24">
+            <div class="p-3 sm:p-4 bg-white rounded-xl sm:rounded-2xl mb-4 sm:mb-6 shadow-2xl">
+                <svg class="w-32 h-32 sm:w-44 sm:h-44 fill-black" viewBox="0 0 24 24">
                     <path d="M2 2h8v8H2V2zm2 2v4h4V4H4zm10-2h8v8h-8V2zm2 2v4h4V4h-4zM2 14h8v8H2v-8zm2 2v4h4v-4H4zm14 3h2v3h-2v-3zm-4-3h2v2h-2v-2zm2 2h2v2h-2v-2zm-2 2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4-6h8v2h-8v-2z"/>
                 </svg>
             </div>
@@ -508,7 +623,7 @@
     </div>
 
     <!-- Notification Toast -->
-    <div id="toast-box" class="fixed bottom-8 right-8 z-50 transform translate-y-20 opacity-0 transition-all duration-300 liquid-card px-6 py-4 rounded-2xl border border-white/20 text-xs text-white flex items-center gap-3 shadow-2xl">
+    <div id="toast-box" class="fixed bottom-4 right-4 left-4 sm:left-auto sm:bottom-8 sm:right-8 z-50 transform translate-y-20 opacity-0 transition-all duration-300 liquid-card px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-white/20 text-[10px] sm:text-xs text-white flex items-center gap-2 sm:gap-3 shadow-2xl">
         <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
         <span id="toast-message">Folio download started!</span>
     </div>
@@ -638,13 +753,17 @@
         // 3. GSAP & SCROLLTRIGGER ANIMATIONS
         gsap.registerPlugin(ScrollTrigger);
 
-        // Custom Ring Cursor Tracker
-        const cursor = document.getElementById('cursor');
-        const cursorRing = document.getElementById('cursor-ring');
-        document.addEventListener('mousemove', (e) => {
-            gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0 });
-            gsap.to(cursorRing, { x: e.clientX, y: e.clientY, duration: 0.35, ease: "power2.out" });
-        });
+        // Custom Ring Cursor Tracker - only for non-touch devices
+        const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        
+        if (!isTouchDevice) {
+            const cursor = document.getElementById('cursor');
+            const cursorRing = document.getElementById('cursor-ring');
+            document.addEventListener('mousemove', (e) => {
+                gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0 });
+                gsap.to(cursorRing, { x: e.clientX, y: e.clientY, duration: 0.35, ease: "power2.out" });
+            });
+        }
 
         // Hero Entrance Timeline
         const heroTl = gsap.timeline();
@@ -660,18 +779,20 @@
         .to('#hero-subline', { opacity: 1, y: 0, duration: 1 }, "-=0.5")
         .to('#nav', { opacity: 1, duration: 0.8 }, "-=0.5");
 
-        // Horizontal Panel Scroll
-        let panels = gsap.utils.toArray(".horizontal-panel");
-        gsap.to(panels, {
-            xPercent: -100 * (panels.length - 1),
-            ease: "none",
-            scrollTrigger: {
-                trigger: "#horizontal-trigger",
-                pin: true,
-                scrub: 1,
-                end: () => "+=" + document.getElementById('horizontal-trigger').offsetWidth
-            }
-        });
+        // Horizontal Panel Scroll - only for desktop
+        if (!isTouchDevice) {
+            let panels = gsap.utils.toArray(".horizontal-panel");
+            gsap.to(panels, {
+                xPercent: -100 * (panels.length - 1),
+                ease: "none",
+                scrollTrigger: {
+                    trigger: "#horizontal-trigger",
+                    pin: true,
+                    scrub: 1,
+                    end: () => "+=" + document.getElementById('horizontal-trigger').offsetWidth
+                }
+            });
+        }
 
         // Text Reveals
         gsap.utils.toArray('.reveal-text').forEach(el => {
@@ -698,7 +819,8 @@
                 if (element) {
                     const rect = element.getBoundingClientRect();
                     const sectionTop = rect.top + window.scrollY;
-                    if (window.scrollY >= sectionTop - 300) {
+                    const offset = isTouchDevice ? 150 : 300; // Smaller offset for mobile
+                    if (window.scrollY >= sectionTop - offset) {
                         current = section;
                     }
                 }
