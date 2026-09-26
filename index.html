@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en" class="dark scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FOLIO — LiquidGlass Android File Reader</title>
+    
+    <!-- Fonts: Playfair Display for editorial serif, Plus Jakarta Sans, JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Playfair+Display:ital,wght@1,400;1,700;1,900&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- GSAP & ScrollTrigger -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        serif: ['"Playfair Display"', 'serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        obsidian: '#040404',
+                        glass: {
+                            100: 'rgba(255, 255, 255, 0.03)',
+                            200: 'rgba(255, 255, 255, 0.06)',
+                            border: 'rgba(255, 255, 255, 0.1)',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root {
+            --bg-color: #040404;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            cursor: none !important; /* Custom pointer styling */
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: #ffffff;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow-x: hidden;
+            selection-background-color: #ffffff;
+            selection-color: #000000;
+        }
+
+        /* 2D Distorted Grid Background Canvas */
+        canvas#grid-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Grain Overlay */
+        .noise-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: url('https://grainy-gradients.vercel.app/noise.svg');
+            opacity: 0.04;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* Custom Dual Cursor */
+        #cursor {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            background: #ffffff;
+            border-radius: 50%;
+            z-index: 10000;
+            pointer-events: none;
+            mix-blend-mode: difference;
+            transform: translate(-50%, -50%);
+        }
+
+        #cursor-ring {
+            position: fixed;
+            width: 44px;
+            height: 44px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 50%;
+            z-index: 9999;
+            pointer-events: none;
+            mix-blend-mode: difference;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Text Split Animation Character Styles */
+        .char {
+            display: inline-block;
+            transform: translateY(180%) skewY(8deg);
+            filter: blur(60px);
+            opacity: 0;
+            will-change: transform, filter, opacity;
+        }
+
+        /* Floating Capsule Navigation */
+        .capsule-nav {
+            position: fixed;
+            top: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 100px;
+            padding: 8px 28px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            font-size: 12px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            opacity: 0;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        /* Magical Dynamic Fill Button */
+        .magical-btn {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: color 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+            z-index: 1;
+        }
+
+        .magical-btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 200%;
+            background: #ffffff;
+            transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            z-index: -1;
+            transform: translateY(100%) skewY(-16deg);
+        }
+
+        .magical-btn:hover {
+            color: #000000 !important;
+            border-color: #ffffff;
+        }
+
+        .magical-btn:hover ::placeholder {
+            color: #222;
+        }
+
+        .magical-btn:hover::before {
+            transform: translateY(0) skewY(0deg);
+        }
+
+        /* Glassmorphic Cards */
+        .liquid-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            position: relative;
+            overflow: hidden;
+            transition: background 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .liquid-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            border-radius: inherit;
+            opacity: 0;
+            transform: scale(0.94);
+            transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .liquid-card:hover {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+        }
+
+        .liquid-card:hover::before {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Horizontal Scroll Layout Container */
+        .horizontal-container {
+            display: flex;
+            width: 300vw;
+            height: 100vh;
+        }
+
+        .horizontal-panel {
+            width: 100vw;
+            height: 100vh;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8vw;
+            position: relative;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #040404;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #222;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+    </style>
+</head>
+<body class="antialiased text-white selection:bg-white selection:text-black">
+
+    <!-- Custom Dual Cursor -->
+    <div id="cursor"></div>
+    <div id="cursor-ring"></div>
+
+    <!-- Grain Overlay -->
+    <div class="noise-overlay"></div>
+
+    <!-- 2D Canvas Background Grid -->
+    <canvas id="grid-canvas"></canvas>
+
+    <!-- Floating Capsule Navigation -->
+    <nav class="capsule-nav" id="nav">
+        <a href="#hero" class="nav-item text-zinc-400 hover:text-white transition font-medium" id="nav-folio">FOLIO</a>
+        <a href="#about" class="nav-item text-zinc-400 hover:text-white transition font-medium" id="nav-engine">Engine</a>
+        <a href="#formats" class="nav-item text-zinc-400 hover:text-white transition font-medium">Formats</a>
+        <a href="#download" class="nav-item text-zinc-400 hover:text-white transition font-medium">Download</a>
+    </nav>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <main class="relative z-20">
+
+        <!-- HERO SECTION -->
+        <section class="min-h-screen w-full flex items-center justify-center px-6 sm:px-12 relative" id="hero">
+            <div class="w-full max-w-7xl mx-auto pt-20">
+                
+                <!-- Editorial Giant Headline -->
+                <h1 class="text-[17vw] sm:text-[16vw] font-serif italic font-black leading-[0.78] tracking-tighter text-white py-16 select-none" id="split-title" style="mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 35%, black 65%, transparent 100%);">
+                    FOLIO
+                </h1>
+
+                <!-- Subline with Horizontal Rule Accent -->
+                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 mt-12 opacity-0" id="hero-subline">
+                    <div class="flex items-center gap-6">
+                        <div class="h-px w-20 sm:w-32 bg-white/40"></div>
+                        <p class="text-xl sm:text-2xl font-normal text-zinc-200 max-w-xl leading-relaxed">
+                            The document reader for Android.<br>
+                            Perfect in every way.
+                        </p>
+                    </div>
+
+                    <!-- Call To Action Dynamic Buttons -->
+                    <div class="flex items-center gap-4 w-full md:w-auto">
+                        <a href="#download" class="magical-btn px-8 py-4 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-2 text-white">
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            <span>DOWNLOAD</span>
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- PHILOSOPHY / INTRO SECTION -->
+        <section class="min-h-screen w-full flex items-center justify-center px-6 sm:px-12 py-32" id="about">
+            <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-24 items-center">
+                
+                <div class="space-y-8">
+                    <span class="text-xs font-mono tracking-[0.4em] text-zinc-500 uppercase">Philosophy</span>
+                    <h2 class="text-5xl sm:text-7xl font-bold tracking-tighter leading-[1.05] reveal-text">
+                        Crafted For Users<br>
+                        <span class="font-serif italic font-normal text-zinc-400">Who refuse ugly software.</span>
+                    </h2>
+                    <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed animate-fade">
+                        Built for people tired of broken, bloated file readers that make reading documents a chore. 
+                    </p>
+                </div>
+
+                <!-- Abstract Visual Geometry Badge -->
+                <div class="flex items-center justify-center">
+                    <div class="w-72 h-72 sm:w-96 sm:h-96 border border-white/10 rounded-full flex items-center justify-center p-10 relative group">
+                        <div class="absolute inset-0 border-t border-b border-white/30 rounded-full animate-spin" style="animation-duration: 25s;"></div>
+                        <div class="absolute inset-4 border border-white/5 rounded-full"></div>
+                        <div class="text-center space-y-2">
+                            <span class="text-6xl sm:text-8xl font-serif italic text-white/20 group-hover:text-white/40 transition-colors">0.02s</span>
+                            <p class="text-xs font-mono tracking-[0.3em] text-zinc-500 uppercase">Parse Latency</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- HORIZONTAL SCROLL FEATURES / ADVANTAGES SECTION -->
+        <div id="horizontal-trigger" class="relative">
+            <div class="horizontal-container">
+                
+                <!-- Panel 1: 0 Ads & 100% Free -->
+                <div class="horizontal-panel bg-zinc-950/40 border-r border-white/5">
+                    <div class="max-w-3xl space-y-6">
+                        <span class="text-xs font-mono tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 01</span>
+                        <h2 class="text-5xl sm:text-7xl font-black italic font-serif tracking-tight">0 Ads & 100% Free</h2>
+                        <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed">
+                            No account creation, no subscriptions, zero ads, and no tracking.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Panel 2: Sub-Millisecond Speed -->
+                <div class="horizontal-panel bg-black border-r border-white/5" id="engine-start">
+                    <div class="max-w-3xl space-y-6">
+                        <span class="text-xs font-mono tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 02</span>
+                        <h2 class="text-5xl sm:text-7xl font-black italic font-serif tracking-tight">Sub-Millisecond Speed</h2>
+                        <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed">
+                            Written in low-level Rust bindings for Android NDK. Pages load before your thumb finishes tapping the screen.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Panel 3: Zero Telemetry & Offline -->
+                <div class="horizontal-panel bg-zinc-950/40">
+                    <div class="max-w-3xl space-y-6">
+                        <span class="text-xs font-mono tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 03</span>
+                        <h2 class="text-5xl sm:text-7xl font-black italic font-serif tracking-tight">Zero Telemetry</h2>
+                        <p class="text-lg sm:text-xl text-zinc-300 font-normal leading-relaxed">
+                            Your files stay strictly on your device. Folio requests zero internet permissions and contains zero tracking SDKs.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- FORMATS SECTION (STATIC CARDS GRID) -->
+        <section class="py-32 px-6 sm:px-12 max-w-7xl mx-auto" id="formats">
+            <div class="mb-20 space-y-4">
+                <span class="text-xs font-mono tracking-[0.4em] text-zinc-500 uppercase">Universal Engine</span>
+                <h2 class="text-4xl sm:text-6xl font-extrabold tracking-tight">
+                    Supported Formats. <br>
+                    <span class="font-serif italic font-normal text-zinc-500">Perfect fidelity for every document.</span>
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                <!-- PDF -->
+                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                    <div>
+                        <span class="text-4xl font-serif italic font-black text-white">.PDF</span>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">PDF Vector Engine</h3>
+                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                            Vector-crisp zooming, table layout reflow, instantaneous text searching, and annotation layer rendering.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- DOCX -->
+                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                    <div>
+                        <span class="text-4xl font-serif italic font-black text-white">.DOCX</span>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Word Document Parser</h3>
+                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                            Full structural parsing for Microsoft Word documents with matched typography, tables, and styles.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- PPTX -->
+                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                    <div>
+                        <span class="text-4xl font-serif italic font-black text-white">.PPTX</span>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Presentation Deck View</h3>
+                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                            Fluid slide deck navigation with speaker notes mode and high-resolution graphic rendering.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- MD -->
+                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72">
+                    <div>
+                        <span class="text-4xl font-serif italic font-black text-white">.MD</span>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Markdown & Formulae</h3>
+                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                            Native Markdown parsing with code syntax highlighting and mathematical formula rendering.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- TXT -->
+                <div class="liquid-card p-8 rounded-3xl flex flex-col justify-between h-72 sm:col-span-2 lg:col-span-2">
+                    <div>
+                        <span class="text-4xl font-serif italic font-black text-white">.TXT</span>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold mb-2">Plain Text</h3>
+                        <p class="text-sm text-zinc-300 font-normal leading-relaxed">
+                            Ultra-lightweight plain text viewer with auto-detected line encodings and monospace mode.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- DOWNLOAD CTA SECTION -->
+        <section class="py-32 px-6 sm:px-12 max-w-7xl mx-auto text-center" id="download">
+            <div class="space-y-12">
+                <h2 class="text-[12vw] font-serif italic font-black tracking-tighter leading-none select-none">
+                    READ PURE
+                </h2>
+
+                <p class="text-zinc-300 text-lg sm:text-xl max-w-2xl mx-auto font-normal leading-relaxed">
+                    Zero irritation. Zero cost. Pure reading perfection that changes everything.
+                </p>
+
+                <!-- Actions Trio -->
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-5 pt-6">
+                    
+                    <button onclick="handleGooglePlay()" class="magical-btn w-full sm:w-auto px-10 py-5 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-3 text-white">
+                        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                            <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.5,12.92 20.16,13.19L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z"/>
+                        </svg>
+                        <span>Download from Google Play</span>
+                    </button>
+
+                    <button onclick="handleDownload()" class="magical-btn w-full sm:w-auto px-10 py-5 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-3 text-zinc-300">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Direct APK (14MB)</span>
+                    </button>
+
+                    <button onclick="toggleQRModal()" class="magical-btn w-full sm:w-auto px-8 py-5 rounded-full text-xs font-bold tracking-[0.2em] uppercase flex items-center justify-center gap-3 text-zinc-400">
+                        <i data-lucide="qr-code" class="w-4 h-4"></i>
+                        <span>Scan QR</span>
+                    </button>
+
+                </div>
+
+                <!-- Open Source Note -->
+                <div class="mt-12 text-center">
+                    <a href="https://github.com/Hiw4i/Folio-app" target="_blank" class="text-xs font-mono tracking-[0.3em] text-zinc-500 uppercase hover:text-white transition">
+                        Open Source Project
+                    </a>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- QR Code Modal -->
+    <div id="qr-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center hidden p-4">
+        <div class="liquid-card p-8 rounded-3xl max-w-sm w-full border border-white/20 text-center relative flex flex-col items-center">
+            <button onclick="toggleQRModal()" class="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <h3 class="text-xl font-bold mb-2">Scan with Android</h3>
+            <p class="text-xs text-zinc-400 mb-6">Point your mobile camera to download the APK directly to your phone.</p>
+            
+            <div class="p-4 bg-white rounded-2xl mb-6 shadow-2xl">
+                <svg class="w-44 h-44 fill-black" viewBox="0 0 24 24">
+                    <path d="M2 2h8v8H2V2zm2 2v4h4V4H4zm10-2h8v8h-8V2zm2 2v4h4V4h-4zM2 14h8v8H2v-8zm2 2v4h4v-4H4zm14 3h2v3h-2v-3zm-4-3h2v2h-2v-2zm2 2h2v2h-2v-2zm-2 2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4-6h8v2h-8v-2z"/>
+                </svg>
+            </div>
+
+            <span class="text-[10px] font-mono text-zinc-500">folio-reader-release.apk</span>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast-box" class="fixed bottom-8 right-8 z-50 transform translate-y-20 opacity-0 transition-all duration-300 liquid-card px-6 py-4 rounded-2xl border border-white/20 text-xs text-white flex items-center gap-3 shadow-2xl">
+        <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+        <span id="toast-message">Folio download started!</span>
+    </div>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // 1. TEXT SPLITTING LOGIC FOR EDITORIAL HEADLINE
+        const splitText = (el) => {
+            const text = el.innerText;
+            el.innerHTML = '';
+            text.split('').forEach(char => {
+                const span = document.createElement('span');
+                span.className = 'char';
+                span.innerText = char === ' ' ? '\u00A0' : char;
+                el.appendChild(span);
+            });
+        };
+        splitText(document.getElementById('split-title'));
+
+        // 2. 2D UNDULATING & WARPING CANVAS GRID (NO 3D OBJECTS)
+        const canvas = document.getElementById('grid-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        const spacing = 50; // Grid cell distance
+        let cols = 0, rows = 0;
+
+        function resizeCanvas() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.ceil(width / spacing) + 3;
+            rows = Math.ceil(height / spacing) + 3;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let mouseX = -1000, mouseY = -1000;
+        let targetMouseX = -1000, targetMouseY = -1000;
+
+        document.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+        });
+
+        let time = 0;
+
+        function animate2DGrid() {
+            requestAnimationFrame(animate2DGrid);
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Interpolate mouse position for smooth interactive flex
+            mouseX += (targetMouseX - mouseX) * 0.04;
+            mouseY += (targetMouseY - mouseY) * 0.04;
+
+            time += 0.006; // Slow, tranquil wave movement
+
+            const grid = [];
+
+            // Compute distorted coordinates for each 2D grid point
+            for (let r = 0; r < rows; r++) {
+                grid[r] = [];
+                for (let c = 0; c < cols; c++) {
+                    const baseX = (c - 1) * spacing;
+                    const baseY = (r - 1) * spacing;
+
+                    // Multi-frequency smooth 2D sine/cosine wave distortion
+                    const waveX = Math.sin(r * 0.18 + time * 1.2) * 18 + Math.cos(c * 0.14 - time * 0.8) * 14;
+                    const waveY = Math.cos(c * 0.18 + time * 1.0) * 18 + Math.sin(r * 0.15 - time * 0.7) * 14;
+
+                    // Mouse proximity distortion (gentle push/warp away from cursor)
+                    const dx = baseX - mouseX;
+                    const dy = baseY - mouseY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const maxDist = 450;
+                    let mouseOffsetX = 0;
+                    let mouseOffsetY = 0;
+
+                    if (dist < maxDist) {
+                        const factor = Math.sin((1 - dist / maxDist) * Math.PI) * 28;
+                        mouseOffsetX = (dx / (dist || 1)) * factor;
+                        mouseOffsetY = (dy / (dist || 1)) * factor;
+                    }
+
+                    grid[r][c] = {
+                        x: baseX + waveX + mouseOffsetX,
+                        y: baseY + waveY + mouseOffsetY
+                    };
+                }
+            }
+
+            // Draw horizontal distorted grid lines
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+            ctx.lineWidth = 1;
+
+            for (let r = 0; r < rows; r++) {
+                ctx.moveTo(grid[r][0].x, grid[r][0].y);
+                for (let c = 1; c < cols; c++) {
+                    const prev = grid[r][c - 1];
+                    const curr = grid[r][c];
+                    const xc = (prev.x + curr.x) / 2;
+                    const yc = (prev.y + curr.y) / 2;
+                    ctx.quadraticCurveTo(prev.x, prev.y, xc, yc);
+                }
+            }
+
+            // Draw vertical distorted grid lines
+            for (let c = 0; c < cols; c++) {
+                ctx.moveTo(grid[0][c].x, grid[0][c].y);
+                for (let r = 1; r < rows; r++) {
+                    const prev = grid[r - 1][c];
+                    const curr = grid[r][c];
+                    const xc = (prev.x + curr.x) / 2;
+                    const yc = (prev.y + curr.y) / 2;
+                    ctx.quadraticCurveTo(prev.x, prev.y, xc, yc);
+                }
+            }
+
+            ctx.stroke();
+        }
+
+        animate2DGrid();
+
+        // 3. GSAP & SCROLLTRIGGER ANIMATIONS
+        gsap.registerPlugin(ScrollTrigger);
+
+        // Custom Ring Cursor Tracker
+        const cursor = document.getElementById('cursor');
+        const cursorRing = document.getElementById('cursor-ring');
+        document.addEventListener('mousemove', (e) => {
+            gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0 });
+            gsap.to(cursorRing, { x: e.clientX, y: e.clientY, duration: 0.35, ease: "power2.out" });
+        });
+
+        // Hero Entrance Timeline
+        const heroTl = gsap.timeline();
+        heroTl.to('.char', {
+            y: 0,
+            skewY: 0,
+            opacity: 1,
+            filter: 'blur(0px)',
+            duration: 1.4,
+            stagger: 0.08,
+            ease: "expo.out"
+        })
+        .to('#hero-subline', { opacity: 1, y: 0, duration: 1 }, "-=0.5")
+        .to('#nav', { opacity: 1, duration: 0.8 }, "-=0.5");
+
+        // Horizontal Panel Scroll
+        let panels = gsap.utils.toArray(".horizontal-panel");
+        gsap.to(panels, {
+            xPercent: -100 * (panels.length - 1),
+            ease: "none",
+            scrollTrigger: {
+                trigger: "#horizontal-trigger",
+                pin: true,
+                scrub: 1,
+                end: () => "+=" + document.getElementById('horizontal-trigger').offsetWidth
+            }
+        });
+
+        // Text Reveals
+        gsap.utils.toArray('.reveal-text').forEach(el => {
+            gsap.from(el, {
+                scrollTrigger: {
+                    trigger: el,
+                    start: "top 85%",
+                },
+                y: 80,
+                opacity: 0,
+                duration: 1.2,
+                ease: "power3.out"
+            });
+        });
+
+        // Active Navigation Item Highlighting
+        const sections = ['#hero', '#about', '#formats', '#download'];
+        const navItems = document.querySelectorAll('.nav-item');
+
+        function updateActiveNav() {
+            let current = sections[0]; // Default to first section
+            sections.forEach(section => {
+                const element = document.querySelector(section);
+                if (element) {
+                    const rect = element.getBoundingClientRect();
+                    const sectionTop = rect.top + window.scrollY;
+                    if (window.scrollY >= sectionTop - 300) {
+                        current = section;
+                    }
+                }
+            });
+
+            navItems.forEach(item => {
+                item.classList.remove('text-white');
+                item.classList.add('text-zinc-400');
+                if (item.getAttribute('href') === current) {
+                    item.classList.remove('text-zinc-400');
+                    item.classList.add('text-white');
+                }
+            });
+        }
+
+        window.addEventListener('scroll', updateActiveNav);
+        updateActiveNav(); // Initial call to set correct state on page load
+
+        // Engine link should scroll to the about section
+        document.getElementById('nav-engine').addEventListener('click', (e) => {
+            e.preventDefault();
+            const aboutSection = document.getElementById('about');
+            aboutSection.scrollIntoView({ behavior: 'smooth' });
+        });
+
+        // FOLIO link should scroll to the top of the page
+        document.getElementById('nav-folio').addEventListener('click', (e) => {
+            e.preventDefault();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // 4. DOWNLOAD TOAST & MODAL LOGIC
+        function showToast(msg) {
+            const toast = document.getElementById('toast-box');
+            document.getElementById('toast-message').innerText = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3500);
+        }
+
+        function handleDownload() {
+            showToast('Folio APK download started (folio-release.apk)');
+        }
+
+        function handleGooglePlay() {
+            showToast('Redirecting to Google Play Store...');
+        }
+
+        function toggleQRModal() {
+            const modal = document.getElementById('qr-modal');
+            modal.classList.toggle('hidden');
+        }
+    </script>
+</body>
+</html>
