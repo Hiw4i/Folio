@@ -48,6 +48,147 @@
             --bg-color: #040404;
         }
 
+        .reader-preview {
+            width: 100%;
+            max-width: 38rem;
+            justify-self: center;
+            min-width: 0;
+        }
+
+        .reader-preview-stage {
+            position: relative;
+            width: 100%;
+            height: clamp(25rem, 50vw, 37rem);
+            margin-inline: auto;
+            perspective: 1000px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .reader-preview-screen {
+            position: absolute;
+            inset: 0;
+            transform: rotateX(3deg) rotateY(-6deg) rotateZ(2deg);
+            animation: reader-preview-float 9s ease-in-out infinite alternate;
+            animation-play-state: paused;
+        }
+
+        .reader-preview[data-playing] .reader-preview-screen {
+            animation-play-state: running;
+        }
+
+        @keyframes reader-preview-float {
+            to { transform: translateY(-6px) rotateX(-2deg) rotateY(4deg) rotateZ(-1deg); }
+        }
+
+        .reader-preview-slide {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 360ms ease, visibility 360ms;
+        }
+
+        .reader-preview-slide[aria-hidden="false"] {
+            opacity: 1;
+            visibility: visible;
+            z-index: 1;
+        }
+
+        .reader-preview-slide img {
+            display: block;
+            width: auto;
+            height: auto;
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            box-shadow: 0 18px 38px rgb(0 0 0 / 55%);
+        }
+
+        .reader-preview-controls {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            width: max-content;
+            margin: 1rem auto 0;
+        }
+
+        .reader-preview-controls[hidden] {
+            display: none;
+        }
+
+        .reader-preview-controls button {
+            display: grid;
+            place-items: center;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: #a1a1aa;
+        }
+
+        .reader-preview-controls button:focus-visible {
+            outline: 1px solid #fff;
+            outline-offset: -4px;
+        }
+
+        .reader-preview-controls button[aria-controls] {
+            width: 36px;
+        }
+
+        .reader-preview-controls button:hover,
+        .reader-preview-controls button:focus-visible,
+        .reader-preview-controls [aria-current="true"] {
+            color: #fff;
+        }
+
+        .reader-preview-marker {
+            width: 24px;
+            height: 24px;
+            transition: transform 180ms ease;
+        }
+
+        .reader-preview-controls button:hover .reader-preview-marker,
+        .reader-preview-controls button:focus-visible .reader-preview-marker {
+            transform: scale(1.24);
+        }
+
+        .reader-preview-ring {
+            opacity: 0;
+        }
+
+        [aria-current="true"] .reader-preview-ring {
+            opacity: 1;
+        }
+
+        .reader-preview-toggle {
+            position: absolute;
+            left: 100%;
+            margin-left: 4px;
+        }
+
+        .reader-preview[data-paused] .reader-preview-pause,
+        .reader-preview:not([data-paused]) .reader-preview-play {
+            display: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .reader-preview-screen {
+                animation: none;
+                transform: none;
+            }
+
+            .reader-preview-slide,
+            .reader-preview-marker {
+                transition: none;
+            }
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -410,7 +551,7 @@
 
         <!-- PHILOSOPHY / INTRO SECTION -->
         <section class="min-h-screen w-full flex items-center justify-center px-4 sm:px-6 md:px-12 py-20 sm:py-32" id="about">
-            <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-24 items-center">
+            <div class="w-full max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-24 items-center">
                 
                 <div class="space-y-6 sm:space-y-8">
                     <span class="text-[10px] sm:text-xs font-mono tracking-[0.3em] sm:tracking-[0.4em] text-zinc-500 uppercase">Philosophy</span>
@@ -418,21 +559,42 @@
                         Crafted For Users<br>
                         <span class="font-serif italic font-normal text-zinc-400">Who refuse ugly software.</span>
                     </h2>
-                    <p class="text-base sm:text-lg md:text-xl text-zinc-300 font-normal leading-relaxed animate-fade">
-                        Built for people tired of broken, bloated file readers that make reading documents a chore. 
-                    </p>
                 </div>
 
-                <!-- Abstract Visual Geometry Badge -->
-                <div class="flex items-center justify-center">
-                    <div class="w-56 h-56 sm:w-72 sm:h-72 md:w-96 md:h-96 border border-white/10 rounded-full flex items-center justify-center p-6 sm:p-10 relative group">
-                        <div class="absolute inset-0 border-t border-b border-white/30 rounded-full animate-spin" style="animation-duration: 25s;"></div>
-                        <div class="absolute inset-4 border border-white/5 rounded-full"></div>
-                        <div class="text-center space-y-2">
-                            <span class="text-5xl sm:text-6xl md:text-8xl font-serif italic text-white/20 group-hover:text-white/40 transition-colors">0.02s</span>
-                            <p class="text-[10px] sm:text-xs font-mono tracking-[0.2em] sm:tracking-[0.3em] text-zinc-500 uppercase">Parse Latency</p>
+                <div class="reader-preview" role="region" aria-label="Folio interface previews">
+                    <div class="reader-preview-stage" id="reader-preview-stage">
+                        <div class="reader-preview-screen">
+                            <div class="reader-preview-slide" aria-hidden="false">
+                                <img src="Images/pptx.jpg" width="2340" height="1080" loading="lazy" draggable="false" alt="A widescreen PowerPoint slide in Folio with a slide counter and search control">
+                            </div>
+                            <div class="reader-preview-slide" aria-hidden="true">
+                                <img src="Images/pdf.jpg" width="1080" height="2340" loading="lazy" draggable="false" alt="A PDF in Folio showing the cover and the start of the next page">
+                            </div>
+                            <div class="reader-preview-slide" aria-hidden="true">
+                                <img src="Images/md.jpg" width="1080" height="2340" loading="lazy" draggable="false" alt="A Markdown article in Folio with formatted headings, a quote, and a numbered list">
+                            </div>
                         </div>
                     </div>
+                    <div class="reader-preview-controls" hidden>
+                        <button type="button" aria-label="Show PowerPoint preview" aria-controls="reader-preview-stage" aria-current="true"></button>
+                        <button type="button" aria-label="Show PDF preview" aria-controls="reader-preview-stage"></button>
+                        <button type="button" aria-label="Show Markdown preview" aria-controls="reader-preview-stage"></button>
+                        <button class="reader-preview-toggle" type="button" aria-label="Pause preview rotation">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path class="reader-preview-pause" d="M6 4.5v7m4-7v7"/>
+                                <path class="reader-preview-play" d="m6 4.5 5 3.5-5 3.5z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <template class="reader-preview-dot">
+                        <svg class="reader-preview-marker" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="4" fill="currentColor"/>
+                            <g class="reader-preview-ring" fill="none" stroke="currentColor" stroke-width="1.2">
+                                <circle cx="12" cy="12" r="8" opacity=".28"/>
+                                <circle class="reader-preview-progress" cx="12" cy="12" r="8" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" transform="rotate(-90 12 12)"/>
+                            </g>
+                        </svg>
+                    </template>
                 </div>
 
             </div>
@@ -453,13 +615,13 @@
                     </div>
                 </div>
 
-                <!-- Panel 2: Sub-Millisecond Speed -->
+                <!-- Panel 2: Rendering -->
                 <div class="horizontal-panel bg-black border-r border-white/5" id="engine-start">
                     <div class="max-w-3xl space-y-6 w-full">
                         <span class="text-xs font-mono tracking-[0.3em] sm:tracking-[0.5em] text-zinc-500 uppercase">Crafted Principle / 02</span>
-                        <h2 class="text-4xl sm:text-5xl md:text-7xl font-black italic font-serif tracking-tight">Sub-Millisecond Speed</h2>
+                        <h2 class="text-4xl sm:text-5xl md:text-7xl font-black italic font-serif tracking-tight">The work behind the page</h2>
                         <p class="text-base sm:text-lg md:text-xl text-zinc-300 font-normal leading-relaxed">
-                            Written in low-level Rust bindings for Android NDK. Pages load before your thumb finishes tapping the screen.
+                            App is powered by custom-built engine that render files entirely offline.
                         </p>
                     </div>
                 </div>
@@ -580,10 +742,10 @@
                         <span class="sm:hidden">Google Play</span>
                     </button>
 
-                    <button onclick="handleDownload()" class="magical-btn w-full sm:w-auto px-6 sm:px-10 py-4 sm:py-5 rounded-full text-[10px] sm:text-xs font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase flex items-center justify-center gap-2 sm:gap-3 text-zinc-300">
+                    <a href="Apk/Folio%20v1.0.0.apk" download class="magical-btn w-full sm:w-auto px-6 sm:px-10 py-4 sm:py-5 rounded-full text-[10px] sm:text-xs font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase flex items-center justify-center gap-2 sm:gap-3 text-zinc-300">
                         <i data-lucide="download" class="w-3 sm:w-4 h-3 sm:h-4"></i>
-                        <span>Direct APK (14MB)</span>
-                    </button>
+                        <span>Direct APK (73 MB)</span>
+                    </a>
 
                     <button onclick="toggleQRModal()" class="magical-btn w-full sm:w-auto px-6 sm:px-8 py-4 sm:py-5 rounded-full text-[10px] sm:text-xs font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase flex items-center justify-center gap-2 sm:gap-3 text-zinc-400">
                         <i data-lucide="qr-code" class="w-3 sm:w-4 h-3 sm:h-4"></i>
@@ -627,6 +789,74 @@
         <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
         <span id="toast-message">Folio download started!</span>
     </div>
+
+    <script>
+        (() => {
+            const preview = document.querySelector('.reader-preview');
+            const slides = [...preview.querySelectorAll('.reader-preview-slide')];
+            const controls = preview.querySelector('.reader-preview-controls');
+            const dots = [...controls.querySelectorAll('[aria-controls]')];
+            const toggle = controls.querySelector('.reader-preview-toggle');
+            const marker = preview.querySelector('.reader-preview-dot');
+            const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            const slideDuration = 5000;
+            let activeIndex = 0;
+            let inView = false;
+            let paused = reducedMotion.matches;
+            let progress;
+
+            function syncPlayback() {
+                const playing = inView && !document.hidden && !paused;
+                preview.toggleAttribute('data-playing', playing);
+                preview.toggleAttribute('data-paused', paused);
+                toggle.setAttribute('aria-label', paused ? 'Play preview rotation' : 'Pause preview rotation');
+                if (playing) {
+                    progress.play();
+                } else {
+                    progress.pause();
+                }
+            }
+
+            function selectSlide(index) {
+                slides[activeIndex].setAttribute('aria-hidden', 'true');
+                dots[activeIndex].removeAttribute('aria-current');
+                activeIndex = index;
+                slides[index].setAttribute('aria-hidden', 'false');
+                dots[index].setAttribute('aria-current', 'true');
+
+                progress?.cancel();
+                progress = dots[index].querySelector('.reader-preview-progress').animate(
+                    [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
+                    { duration: slideDuration, fill: 'both' }
+                );
+                progress.onfinish = () => selectSlide((activeIndex + 1) % slides.length);
+                syncPlayback();
+            }
+
+            dots.forEach((dot, index) => {
+                dot.append(marker.content.cloneNode(true));
+                dot.addEventListener('click', () => selectSlide(index));
+            });
+            toggle.addEventListener('click', () => {
+                paused = !paused;
+                syncPlayback();
+            });
+            reducedMotion.addEventListener('change', event => {
+                paused = event.matches;
+                syncPlayback();
+            });
+            document.addEventListener('visibilitychange', syncPlayback);
+
+            const observer = new IntersectionObserver(([entry]) => {
+                inView = entry.isIntersecting;
+                syncPlayback();
+            });
+            observer.observe(preview.querySelector('.reader-preview-stage'));
+
+            selectSlide(0);
+            controls.hidden = false;
+        })();
+    </script>
 
     <script>
         // Initialize Lucide Icons
@@ -863,10 +1093,6 @@
                 toast.classList.remove('translate-y-0', 'opacity-100');
                 toast.classList.add('translate-y-20', 'opacity-0');
             }, 3500);
-        }
-
-        function handleDownload() {
-            showToast('Folio APK download started (folio-release.apk)');
         }
 
         function handleGooglePlay() {
